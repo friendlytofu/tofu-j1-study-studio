@@ -28,7 +28,9 @@ let clickContext;
 const tourSteps = [
   { target:"#volume-levels", key:"tourSound" }, { target:"#ja-voice", key:"tourVoice" }, { target:"#theme-toggle", key:"tourTheme" },
   { target:"#language", key:"tourLanguage" }, { target:"#fullscreen-toggle", key:"tourFullscreen" },
+  { target:"#section-nav", key:"tourMap", view:"read" },
   { target:'.nav-tab[data-view="read"]', key:"tourRead", view:"read" },
+  { target:"#pronunciation-alert", key:"tourPronunciation", view:"read", warning:true },
   { target:'.nav-tab[data-view="write"]', key:"tourWrite", view:"write" },
   { target:'.nav-tab[data-view="vocab"]', key:"tourVocab", view:"vocab" },
   { target:'.nav-tab[data-view="dictation"]', key:"tourDictation", view:"dictation" },
@@ -89,7 +91,8 @@ function showTourStep(index) {
   const target = $(step.target);
   target.scrollIntoView({block:"center",inline:"nearest",behavior:"instant"});
   $("#tour-count").textContent = `${index+1} / ${tourSteps.length}`;
-  $("#tour-title").textContent = translate("tourTitle");
+  $("#tour-title").textContent = translate(step.warning ? "pronunciationTitle" : "tourTitle");
+  $("#tour-card").classList.toggle("warning", Boolean(step.warning));
   $("#tour-body").textContent = translate(step.key);
   $("#tour-back").hidden = index === 0;
   $("#tour-next").textContent = translate(index === tourSteps.length-1 ? "tourFinish" : "tourNext");
@@ -99,7 +102,7 @@ function showTourStep(index) {
 function endTour() {
   tourIndex = -1;
   $("#tour-layer").hidden = true;
-  safeSet("jss-tour-seen-v3", "yes");
+  safeSet("jss-tour-seen-v4", "yes");
   $("#tour-open").focus();
 }
 function startTour() {
@@ -143,6 +146,7 @@ function applyLanguage() {
   $("#tour-open").setAttribute("aria-label", translate("tourOpen"));
   $("#tour-open").title = translate("tourOpen");
   $("#volume-levels").setAttribute("aria-label", translate("soundLevel"));
+  $("#map-jump").setAttribute("aria-label", translate("studyMap"));
   $("#ja-voice").setAttribute("aria-label", translate("voiceLabel"));
   $("#voice-preview").setAttribute("aria-label", translate("voicePreview"));
   $("#voice-preview").title = translate("voicePreview");
@@ -152,14 +156,19 @@ function applyLanguage() {
   renderLessonPills(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
   renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderBuilder(); renderDialogue(); renderChase(); renderUploadTracks(); renderLibrary();
 }
-function showView(view) {
+function showView(view, scrollToContent = false) {
   if (!["read","write","vocab","dictation","match","builder","dialogue","chase","library"].includes(view)) return;
   if (state.view === "chase" && view !== "chase" && chase.active) stopChase("chasePaused");
   state.view = view;
-  $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
-  $(`.nav-tab[data-view="${view}"]`).scrollIntoView({ block: "nearest", inline: "nearest" });
+  $$(".nav-tab").forEach((button) => {
+    const active = button.dataset.view === view;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
   $$(".view").forEach((element) => element.classList.toggle("active", element.id === `${view}-view`));
   history.replaceState(null, "", `#${view}`);
+  if (scrollToContent) $(`#${view}-view`).scrollIntoView({ block:"start", behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   if (view === "write") { resizeCanvas(); loadStrokeArt(); }
 }
 function renderLessonPills() {
@@ -769,7 +778,20 @@ async function uploadNumberedAudio(event) {
 }
 
 function bindEvents(){
-  $$(".nav-tab").forEach((button)=>button.addEventListener("click",()=>showView(button.dataset.view)));
+  $$(".nav-tab").forEach((button)=>button.addEventListener("click",()=>showView(button.dataset.view, true)));
+  $("#section-nav").addEventListener("keydown", (event) => {
+    const buttons = $$("#section-nav .nav-tab");
+    const index = buttons.indexOf(document.activeElement);
+    const offset = {ArrowRight:1, ArrowLeft:-1, ArrowDown:3, ArrowUp:-3}[event.key];
+    const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : index + offset;
+    if (index < 0 || (offset === undefined && event.key !== "Home" && event.key !== "End")) return;
+    event.preventDefault(); buttons[Math.max(0, Math.min(buttons.length - 1, next))].focus();
+  });
+  $("#map-jump").addEventListener("click", () => {
+    $("#section-nav").scrollIntoView({block:"start",behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth"});
+    $(`#section-nav .nav-tab[data-view="${state.view}"]`).focus({preventScroll:true});
+  });
+  if ("IntersectionObserver" in window) new IntersectionObserver(([entry]) => { $("#map-jump").hidden = entry.isIntersecting; }, {threshold:.1}).observe($("#section-nav"));
   $$("#volume-levels button").forEach((button) => button.addEventListener("click", () => setVolume(Number(button.dataset.volume))));
   document.addEventListener("click", (event) => {
     if (event.target.closest("button, a, select, input[type=checkbox]")) clickSound();
@@ -844,5 +866,5 @@ function bindEvents(){
   window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
   initDrawing();
 }
-async function init(){if(!["en","ja","zh","ko","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;resetBuilder();bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v3"))startTour();}
+async function init(){if(!["en","ja","zh","ko","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;resetBuilder();bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v4"))startTour();}
 init();

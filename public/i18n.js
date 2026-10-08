@@ -112,4 +112,15 @@ const practiceLabels = {
 };
 for (const [language, labels] of Object.entries(practiceLabels)) Object.assign(messages[language], labels);
 
+const navigationLabels = {
+  en:{studyMap:"Study map",mapHint:"Nine spaces, one tap away.",tourMap:"All nine study areas are visible here. Choose a card to open it; the floating Study map button brings you back from anywhere on the page.",pronunciationTitle:"Audio pronunciation warning",tourPronunciation:"Some audio recordings have a noticeable English accent. Use your sensei’s pronunciation in class as your main model when practicing spoken Japanese."},
+  ja:{studyMap:"学習マップ",mapHint:"九つの学習エリアへ、ワンタップで。",tourMap:"九つの学習エリアがここに並んでいます。カードを選んで開き、ページの途中では学習マップのボタンから戻れます。",pronunciationTitle:"音声の発音について",tourPronunciation:"一部の録音には英語のアクセントがはっきりと感じられます。日本語の発音を練習するときは、授業中の先生の発音を主なお手本にしてください。"},
+  zh:{studyMap:"学习地图",mapHint:"九个学习区域，一点即达。",tourMap:"九个学习区域都在这里。点击卡片即可打开；在页面其他位置，可用浮动的“学习地图”按钮返回。",pronunciationTitle:"音频发音提醒",tourPronunciation:"部分录音带有明显的英语口音。练习日语发音时，请以课堂上老师的发音为主要示范。"},
+  ko:{studyMap:"학습 지도",mapHint:"아홉 가지 학습 메뉴를 한눈에 보세요.",tourMap:"아홉 가지 학습 메뉴가 모두 여기에 있습니다. 카드를 선택해 열고, 페이지 아래에서는 떠 있는 학습 지도 버튼으로 돌아오세요.",pronunciationTitle:"음원 발음 안내",tourPronunciation:"일부 음원에는 영어 억양이 뚜렷하게 들립니다. 일본어 발음을 연습할 때는 수업 중 선생님의 발음을 주된 본보기로 삼으세요."},
+  es:{studyMap:"Mapa de estudio",mapHint:"Nueve espacios a un toque.",tourMap:"Aquí se ven las nueve secciones. Toca una tarjeta para abrirla; el botón flotante Mapa de estudio te trae de vuelta desde cualquier parte.",pronunciationTitle:"Aviso sobre la pronunciación",tourPronunciation:"Algunas grabaciones tienen un acento inglés perceptible. Para practicar la pronunciación japonesa, toma como modelo principal la de tu docente en clase."},
+  fr:{studyMap:"Carte d’étude",mapHint:"Neuf espaces accessibles d’un geste.",tourMap:"Les neuf espaces d’étude sont visibles ici. Touchez une carte pour l’ouvrir ; le bouton flottant Carte d’étude permet de revenir à cette grille.",pronunciationTitle:"Attention à la prononciation",tourPronunciation:"Certains enregistrements ont un accent anglais perceptible. Pour travailler la prononciation japonaise, prenez surtout celle de votre professeur en cours comme modèle."},
+  de:{studyMap:"Lernübersicht",mapHint:"Neun Bereiche auf einen Blick.",tourMap:"Hier siehst du alle neun Lernbereiche. Öffne einen Bereich über seine Karte; mit der schwebenden Lernübersicht kommst du von überall zurück.",pronunciationTitle:"Hinweis zur Aussprache",tourPronunciation:"Einige Aufnahmen haben einen deutlich hörbaren englischen Akzent. Orientiere dich beim Üben der japanischen Aussprache vor allem an deiner Lehrkraft im Unterricht."}
+};
+for (const [language, labels] of Object.entries(navigationLabels)) Object.assign(messages[language], labels);
+
 export const t = (language, key) => messages[language]?.[key] ?? messages.en[key] ?? key;

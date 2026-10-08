@@ -30,3 +30,26 @@ footer{display:flex;justify-content:space-between;gap:15px;border-top:1px solid 
 .voice-control{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap;padding-left:6px}.voice-control select{max-width:124px;height:36px;border:0;border-radius:8px;background:var(--paper-2);color:var(--ink);font:inherit;padding:0 6px}.voice-preview{font-size:13px;min-width:30px}.voice-control select:focus-visible,.voice-preview:focus-visible{outline:2px solid var(--red)}
 @media(max-width:680px){.voice-control{order:2}.voice-preview{order:2}.voice-control select{max-width:105px}}
 @media(min-width:681px) and (max-width:1050px){.site-header{flex-wrap:wrap;padding:15px 0}.control-dock{margin-left:auto}}
+
+/* A compact study map replaces the scrolling row of numbered tabs. */
+.map-heading{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin:8px 0 13px}
+.map-heading>p:last-child{margin:0;color:var(--muted);font-size:12px}
+.section-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;overflow:visible;border:0;scrollbar-width:auto}
+.nav-tab{position:relative;display:flex;align-items:center;gap:13px;min-width:0;min-height:74px;width:100%;padding:12px 15px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);text-align:left;white-space:normal;box-shadow:0 5px 18px rgba(53,42,27,.035);transition:transform .18s,box-shadow .18s,border-color .18s,background .18s}
+.nav-tab:nth-child(3n+2){background:linear-gradient(110deg,var(--surface),var(--paper-2))}
+.nav-tab .nav-glyph{display:grid;place-items:center;flex:none;width:43px;height:43px;border-radius:12px;background:var(--paper-2);color:var(--red-dark);font:28px "Yu Mincho","Hiragino Mincho ProN",serif;opacity:1}
+.nav-tab b{min-width:0;font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+.nav-tab .nav-arrow{margin-left:auto;color:var(--red);font-size:16px;opacity:.45;transition:transform .18s,opacity .18s}
+.nav-tab:hover,.nav-tab:focus-visible{transform:translateY(-3px);border-color:var(--gold);box-shadow:var(--shadow)}
+.nav-tab:hover .nav-arrow,.nav-tab:focus-visible .nav-arrow{transform:translate(2px,-2px);opacity:1}
+.nav-tab.active{border:1px solid var(--red);background:var(--red-soft);color:var(--ink);box-shadow:0 8px 25px rgba(167,62,50,.1)}
+.nav-tab.active .nav-glyph{background:var(--red);color:white}.nav-tab.active .nav-arrow{opacity:1}
+.map-jump{position:fixed;right:clamp(16px,3vw,38px);bottom:calc(20px + env(safe-area-inset-bottom));z-index:50;display:flex;align-items:center;gap:9px;padding:8px 14px 8px 8px;border:1px solid var(--red);border-radius:99px;background:var(--surface);color:var(--ink);box-shadow:0 10px 30px #0003;font-size:11px;letter-spacing:.07em;transition:transform .18s,box-shadow .18s}
+.map-jump:hover{transform:translateY(-3px);box-shadow:0 14px 35px #0004}.map-jump span{display:grid;place-items:center;width:31px;height:31px;border-radius:50%;background:var(--red);color:white;font:20px "Yu Mincho",serif}
+.pronunciation-note{display:flex;align-items:flex-start;gap:15px;max-width:none;margin:0 0 23px;padding:16px 19px;border:1px solid var(--gold);border-radius:14px;background:var(--surface);color:var(--ink);box-shadow:0 7px 25px rgba(197,154,84,.1)}
+.pronunciation-icon{display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:50%;background:var(--gold);color:#172026;font-size:18px;font-weight:900}
+.pronunciation-note h3{margin:0 0 3px;color:var(--ink);font-size:14px;font-weight:800}
+.pronunciation-note p{margin:0;color:var(--ink);font-size:13px;line-height:1.5}
+.tour-card.warning{border:2px solid var(--gold);box-shadow:0 22px 70px #0009,0 0 0 4px rgba(197,154,84,.16)}
+.tour-card.warning h2{color:var(--red-dark);font-weight:700}
+@media(max-width:680px){.map-heading>p:last-child{font-size:11px}.section-nav{gap:7px}.nav-tab{flex-direction:column;justify-content:center;gap:4px;min-height:95px;padding:9px 5px;text-align:center}.nav-tab .nav-glyph{width:33px;height:33px;border-radius:9px;font-size:22px}.nav-tab b{font-size:10.5px;line-height:1.15}.nav-tab .nav-arrow{display:none}.map-jump{width:48px;height:48px;padding:6px;justify-content:center}.map-jump span{width:33px;height:33px}.map-jump b{display:none}.pronunciation-note{padding:13px;gap:10px}.pronunciation-note p{font-size:12px}}
