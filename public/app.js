@@ -1,0 +1,348 @@
+import { trackCounts, tracks, readings, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
+import { t } from "./i18n.js";
+
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+const knownTracks = new Set(tracks.map(({ id }) => id));
+const state = {
+  language: safeGet("jss-language") || "en", theme: safeGet("jss-theme") || "day", volume: 75,
+  view: "read", readLesson: 0, vocabLesson: 0, script: "hiragana", character: "あ",
+  track: "L00-01", audioFiles: new Map(), transcripts: {}, publicAudio: {}, segmentA: null, segmentB: null,
+  dictLessons: new Set([0]), matchLessons: new Set([0]), promptMode: "ja", answerScript: "written", question: null, answered: false,
+  matchItems: [], matchSelected: null, matchDone: new Set(), strokeSvg: null
+};
+const audio = $("#track-audio");
+let toastTimer;
+let strokeRequest = 0;
+
+function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
+function safeSet(key, value) { try { localStorage.setItem(key, value); } catch { /* session-only */ } }
+function translate(key) { return t(state.language, key); }
+function lessonLabel(index) {
+  if (state.language === "ja") return `第${index}課`;
+  if (state.language === "zh") return `第${index}课`;
+  return `${translate("lesson")} ${index}`;
+}
+function toast(message) {
+  const box = $("#toast"); box.textContent = message; box.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => box.classList.remove("show"), 2800);
+}
+function shuffle(items) { const result = [...items]; for (let i = result.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [result[i], result[j]] = [result[j], result[i]]; } return result; }
+function setTheme(theme) {
+  state.theme = theme; document.documentElement.dataset.theme = theme;
+  $("#theme-symbol").textContent = theme === "night" ? "☀" : "☾";
+  safeSet("jss-theme", theme);
+  $("meta[name='theme-color']").content = theme === "night" ? "#111b22" : "#f5f0e7";
+}
+function applyLanguage() {
+  document.documentElement.lang = state.language;
+  document.title = translate("siteTitle");
+  $$("[data-i18n]").forEach((element) => { element.textContent = translate(element.dataset.i18n); });
+  $(".brand").setAttribute("aria-label", translate("siteTitle"));
+  for (const [selector, key] of [[".control-dock","controls"],["#language","interfaceLanguage"],[".section-nav","sections"],["#read-lessons","chooseLessonLabel"],["#vocab-lessons","chooseLessonLabel"],["#script-tabs","chooseScript"],["#draw-canvas","drawingCanvas"],["#seek","audioPosition"]]) {
+    $(selector).setAttribute("aria-label", translate(key));
+  }
+  $("#vocab-search").placeholder = translate("search");
+  $("#vocab-search").setAttribute("aria-label", translate("search"));
+  $("#theme-toggle").setAttribute("aria-label", translate("theme"));
+  $("#theme-toggle").title = translate("theme");
+  $("#fullscreen-toggle").setAttribute("aria-label", document.fullscreenElement ? translate("exitFullscreen") : translate("fullscreen"));
+  $("#fullscreen-toggle").title = document.fullscreenElement ? translate("exitFullscreen") : translate("fullscreen");
+  $("#track-play").setAttribute("aria-label", translate("trackPlay"));
+  $("#dict-replay").setAttribute("aria-label", translate("replay"));
+  renderLessonPills(); renderReading(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
+  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false);
+}
+function showView(view) {
+  if (!["read","write","vocab","dictation","match"].includes(view)) return;
+  state.view = view;
+  $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  $(`.nav-tab[data-view="${view}"]`).scrollIntoView({ block: "nearest", inline: "nearest" });
+  $$(".view").forEach((element) => element.classList.toggle("active", element.id === `${view}-view`));
+  history.replaceState(null, "", `#${view}`);
+  if (view === "write") { resizeCanvas(); loadStrokeArt(); }
+}
+function renderLessonPills() {
+  for (const [containerId, active, action] of [["read-lessons", state.readLesson, (index) => { state.readLesson = index; renderReading(); selectTrack(tracks.find((track) => track.lesson === index).id); }], ["vocab-lessons", state.vocabLesson, (index) => { state.vocabLesson = index; renderVocab(); }]]) {
+    const container = $(`#${containerId}`); container.replaceChildren();
+    trackCounts.forEach((_, index) => {
+      const button = document.createElement("button"); button.type = "button"; button.textContent = lessonLabel(index);
+      button.classList.toggle("active", index === active); button.setAttribute("aria-pressed", String(index === active));
+      button.addEventListener("click", () => { action(index); renderLessonPills(); }); container.append(button);
+    });
+  }
+}
+function renderReading() {
+  const item = readings[state.readLesson];
+  $("#reading-title").textContent = item.title;
+  $("#reading-text").textContent = item.text;
+  $("#reading-translation").textContent = state.language === "ja" ? "" : item.translations[state.language] || item.translations.en;
+  $("#reading-translation").lang = state.language;
+}
+function formatTime(value) { if (!Number.isFinite(value)) return "0:00"; const n = Math.max(0, Math.floor(value)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2,"0")}`; }
+function renderTrackList() {
+  const list = $("#track-list"); list.replaceChildren();
+  const lessonTracks = tracks.filter(({ lesson }) => lesson === state.readLesson);
+  const loaded = lessonTracks.filter(({ id }) => state.audioFiles.has(id) || state.publicAudio[id]).length;
+  $("#track-count").textContent = `${lessonTracks.length} ${translate("tracks")} · ${loaded} ${translate("loaded")}`;
+  for (const { id } of lessonTracks) {
+    const button = document.createElement("button"); button.type = "button"; button.className = "track-item";
+    button.classList.toggle("active", id === state.track);
+    button.classList.toggle("available", state.audioFiles.has(id) || Boolean(state.publicAudio[id]));
+    button.setAttribute("aria-pressed", String(id === state.track));
+    const label = document.createElement("span"); label.textContent = id;
+    const dot = document.createElement("span"); dot.className = "availability"; dot.setAttribute("aria-hidden", "true");
+    button.append(label,dot); button.addEventListener("click", () => selectTrack(id)); list.append(button);
+  }
+}
+function selectTrack(id) {
+  if (!knownTracks.has(id)) return;
+  audio.pause(); state.track = id; state.segmentA = null; state.segmentB = null;
+  const localUrl = state.audioFiles.get(id);
+  const publicUrl = state.publicAudio[id];
+  if (localUrl || publicUrl) { audio.src = localUrl || publicUrl; audio.load(); }
+  else { audio.removeAttribute("src"); audio.load(); }
+  renderTrackList(); renderPlayer();
+}
+function renderPlayer() {
+  const id = state.track;
+  $("#selected-track-title").textContent = id;
+  const category = tracks.find((track) => track.id === id)?.category;
+  $("#selected-track-note").textContent = `${translate(category)} · ${state.audioFiles.has(id) || state.publicAudio[id] ? translate("trackReady") : translate("noTrackData")}`;
+  $("#transcript-text").textContent = state.transcripts[id]?.text || translate("noTranscript");
+  $("#transcript-text").lang = state.transcripts[id] ? "ja" : state.language;
+  $("#track-play").textContent = audio.paused ? "▶" : "Ⅱ";
+  $("#current-time").textContent = formatTime(audio.currentTime);
+  $("#duration").textContent = formatTime(audio.duration);
+  $("#seek").value = Number.isFinite(audio.duration) && audio.duration > 0 ? Math.round(audio.currentTime / audio.duration * 1000) : 0;
+  $("#segment-label").textContent = state.segmentA === null && state.segmentB === null ? "" : `${translate("segment")}: ${state.segmentA === null ? "—" : formatTime(state.segmentA)}–${state.segmentB === null ? "—" : formatTime(state.segmentB)}`;
+}
+function toggleTrackAudio() {
+  if (!audio.src) { toast(translate("noAudio")); return; }
+  if (audio.paused) {
+    if (state.segmentA !== null && (audio.currentTime < state.segmentA || (state.segmentB !== null && audio.currentTime >= state.segmentB))) audio.currentTime = state.segmentA;
+    audio.play().catch(() => toast(translate("noAudio")));
+  } else audio.pause();
+}
+async function importAudio(files) {
+  let count = 0;
+  for (const file of files) {
+    const id = file.name.replace(/\.mp3$/i, "").toUpperCase();
+    if (!knownTracks.has(id) || !/\.mp3$/i.test(file.name)) continue;
+    if (state.audioFiles.has(id)) URL.revokeObjectURL(state.audioFiles.get(id));
+    state.audioFiles.set(id, URL.createObjectURL(file)); count++;
+  }
+  if (!count) { toast(translate("invalidAudio")); return; }
+  selectTrack(state.track); toast(`${count} ${translate("audioAdded")}`);
+}
+async function importTranscripts(file) {
+  try {
+    const parsed = JSON.parse(await file.text());
+    const count = mergeContent(parsed);
+    if (!count) throw new Error("empty");
+    renderPlayer(); renderVocab(); newQuestion(false); newMatchBoard(); toast(`${count} ${translate("textAdded")}`);
+  } catch { toast(translate("invalidText")); }
+}
+function mergeContent(parsed) {
+  if (!parsed || typeof parsed !== "object") return 0;
+  let count = 0;
+  if (parsed.transcripts && typeof parsed.transcripts === "object") {
+    for (const [id, value] of Object.entries(parsed.transcripts)) {
+      if (!knownTracks.has(id) || typeof value?.text !== "string" || !value.text.trim()) continue;
+      state.transcripts[id] = { text: value.text.trim(), bookPage: value.bookPage ?? null }; count++;
+    }
+  }
+  if (parsed.vocabulary && typeof parsed.vocabulary === "object") {
+    for (let lesson = 0; lesson <= 4; lesson++) {
+      const incoming = parsed.vocabulary[String(lesson)]; if (!Array.isArray(incoming)) continue;
+      const clean = incoming.filter((item) => [item?.written,item?.reading,item?.meaning].every((part) => typeof part === "string" && part.trim())).map((item, index) => ({ id:`${lesson}-${index}`, lesson, written:item.written.trim(), reading:item.reading.trim(), meaning:item.meaning.trim() }));
+      if (clean.length) { vocab[lesson] = clean; count += clean.length; }
+    }
+  }
+  if (parsed.audio && typeof parsed.audio === "object") {
+    for (const [id, path] of Object.entries(parsed.audio)) {
+      if (knownTracks.has(id) && typeof path === "string" && /^media\/[A-Za-z0-9_-]+\.mp3$/i.test(path)) { state.publicAudio[id] = path; count++; }
+    }
+  }
+  return count;
+}
+async function loadPublicContent() {
+  try {
+    const response = await fetch("./content.json"); if (!response.ok) return;
+    const parsed = await response.json();
+    mergeContent(parsed); selectTrack(state.track); renderVocab(); newQuestion(false); newMatchBoard();
+  } catch { /* A missing optional content pack leaves the study tools usable. */ }
+}
+function speech(text, lang) {
+  if (!("speechSynthesis" in window)) { toast(translate("noVoice")); return; }
+  speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = lang;
+  utterance.rate = lang === "ja-JP" ? .84 : .93; utterance.volume = state.volume / 100;
+  const voice = speechSynthesis.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(lang.slice(0,2).toLowerCase()));
+  if (voice) utterance.voice = voice;
+  speechSynthesis.speak(utterance);
+}
+function toKatakana(text) { return [...text].map((char) => { const n = char.codePointAt(0); return n >= 0x3041 && n <= 0x3096 ? String.fromCodePoint(n + 0x60) : char; }).join(""); }
+function answerText(item) { return state.answerScript === "hiragana" ? item.reading : state.answerScript === "katakana" ? toKatakana(item.reading) : item.written; }
+function characterSet() { return state.script === "hiragana" ? hiragana : state.script === "katakana" ? katakana : kanji; }
+function renderCharacterGrid() {
+  const items = characterSet(); $("#script-count").textContent = state.script === "kanji" ? `${items.length} ${translate("characterCount")} · ${translate("kanjiScope")}` : `${items.length} ${translate("characterCount")}`;
+  const grid = $("#character-grid"); grid.replaceChildren();
+  for (const character of items) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = character; button.classList.toggle("active", state.character === character); button.setAttribute("aria-pressed", String(state.character === character));
+    button.addEventListener("click", () => { state.character = character; renderCharacterGrid(); renderPractice(); }); grid.append(button);
+  }
+  $("#selected-character").textContent = state.character;
+  $("#selected-character-info").textContent = state.script === "kanji" ? lessonLabel(kanjiLessons[state.character]) : "";
+}
+function renderPractice() {
+  $("#trace-ghost").textContent = state.character; clearDrawing(); loadStrokeArt();
+}
+function resizeCanvas() {
+  const canvas = $("#draw-canvas"); const rect = canvas.getBoundingClientRect(); if (!rect.width) return;
+  const ratio = window.devicePixelRatio || 1; canvas.width = Math.round(rect.width * ratio); canvas.height = Math.round(rect.height * ratio);
+  const context = canvas.getContext("2d"); context.scale(ratio,ratio); context.lineWidth = 4; context.lineCap = "round"; context.lineJoin = "round";
+}
+function clearDrawing() { const canvas = $("#draw-canvas"); canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height); }
+function initDrawing() {
+  const canvas = $("#draw-canvas"); let drawing = false;
+  const point = (event) => { const r = canvas.getBoundingClientRect(); return [event.clientX-r.left,event.clientY-r.top]; };
+  canvas.addEventListener("pointerdown", (event) => { drawing = true; canvas.setPointerCapture(event.pointerId); const [x,y] = point(event); const ctx = canvas.getContext("2d"); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+.01,y+.01); ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--red").trim(); ctx.stroke(); });
+  canvas.addEventListener("pointermove", (event) => { if (!drawing) return; const [x,y] = point(event); const ctx = canvas.getContext("2d"); ctx.lineTo(x,y); ctx.stroke(); });
+  for (const name of ["pointerup","pointercancel","lostpointercapture"]) canvas.addEventListener(name, () => { drawing = false; });
+}
+async function loadStrokeArt() {
+  if (state.view !== "write") return;
+  const requestNumber = ++strokeRequest; const character = state.character; const script = state.script;
+  const target = $("#stroke-art"); target.textContent = character;
+  $("#stroke-status").textContent = translate("strokeLoading");
+  try {
+    const url = script === "kanji" ? `https://cdn.jsdelivr.net/gh/KanjiVG/kanjivg@master/kanji/${character.codePointAt(0).toString(16).padStart(5,"0")}.svg` : `https://cdn.jsdelivr.net/gh/zhengkyl/strokesvg@main/dist/${script}/${encodeURIComponent(character)}.svg`;
+    const response = await fetch(url); if (!response.ok) throw new Error("fetch");
+    const doc = new DOMParser().parseFromString(await response.text(), "image/svg+xml");
+    if (doc.querySelector("parsererror")) throw new Error("svg");
+    if (requestNumber !== strokeRequest) return;
+    if (script === "kanji") {
+      const paths = [...doc.querySelectorAll('g[id^="kvg:StrokePaths_"] path')].map((element) => element.getAttribute("d")).filter(Boolean);
+      if (!paths.length) throw new Error("paths");
+      const svg = document.createElementNS("http://www.w3.org/2000/svg","svg"); svg.setAttribute("viewBox","0 0 109 109"); svg.setAttribute("aria-hidden","true");
+      for (const d of paths) { const ghost = document.createElementNS(svg.namespaceURI,"path"); ghost.setAttribute("d",d); ghost.setAttribute("fill","none"); ghost.setAttribute("stroke","var(--line)"); ghost.setAttribute("stroke-width","3"); ghost.setAttribute("stroke-linecap","round"); ghost.setAttribute("stroke-linejoin","round"); svg.append(ghost); }
+      for (const d of paths) { const ink = document.createElementNS(svg.namespaceURI,"path"); ink.setAttribute("d",d); ink.setAttribute("fill","none"); ink.setAttribute("stroke","var(--red)"); ink.setAttribute("stroke-width","3"); ink.setAttribute("stroke-linecap","round"); ink.setAttribute("stroke-linejoin","round"); ink.classList.add("animated-stroke"); svg.append(ink); }
+      target.replaceChildren(svg);
+    } else {
+      const svg = doc.documentElement;
+      for (const bad of [...svg.querySelectorAll("script,foreignObject,iframe")]) bad.remove();
+      if (!svg.querySelector('g[data-strokesvg="strokes"]')) throw new Error("kana strokes");
+      const copy = document.importNode(svg,true); copy.removeAttribute("onload"); copy.setAttribute("aria-hidden","true");
+      target.replaceChildren(copy);
+    }
+    state.strokeSvg = target.querySelector("svg"); $("#stroke-status").textContent = translate("strokeReady");
+  } catch { if (requestNumber === strokeRequest) { state.strokeSvg = null; target.textContent = character; $("#stroke-status").textContent = translate("strokeUnavailable"); } }
+}
+function animateStrokes() {
+  if (!state.strokeSvg) { loadStrokeArt(); return; }
+  const paths = state.script === "kanji" ? [...state.strokeSvg.querySelectorAll(".animated-stroke")] : [...state.strokeSvg.querySelectorAll('g[data-strokesvg="strokes"] path')];
+  paths.forEach((path, index) => {
+    try {
+      const length = path.getTotalLength() + 2;
+      path.style.animation = "none";
+      path.style.strokeDasharray = String(length);
+      path.style.strokeDashoffset = String(length);
+      void path.getBoundingClientRect();
+      path.style.animation = `trace-stroke 650ms ease-in-out ${index * 620}ms forwards`;
+    } catch { /* leave the static guide visible */ }
+  });
+}
+function renderVocab() {
+  const search = $("#vocab-search").value.trim().toLocaleLowerCase();
+  const items = vocab[state.vocabLesson].filter((item) => `${item.written} ${item.reading} ${item.meaning}`.toLocaleLowerCase().includes(search));
+  $("#vocab-count").textContent = `${lessonLabel(state.vocabLesson)} · ${vocab[state.vocabLesson].length} ${translate("words")}`;
+  const list = $("#vocab-list"); list.replaceChildren();
+  if (!items.length) { const p = document.createElement("p"); p.className="empty-message"; p.textContent=translate("noWords"); list.append(p); return; }
+  for (const item of items) {
+    const card = document.createElement("article"); card.className = "vocab-entry";
+    const word = document.createElement("strong"); word.lang="ja"; word.textContent=item.written;
+    const reading = document.createElement("span"); reading.className="reading"; reading.lang="ja"; reading.textContent=item.reading;
+    const meaning = document.createElement("span"); meaning.className="meaning"; meaning.lang="en"; meaning.textContent=item.meaning;
+    const play = document.createElement("button"); play.type="button"; play.textContent="◖))"; play.setAttribute("aria-label",`${translate("replay")}: ${item.reading}`); play.addEventListener("click",()=>speech(item.reading,"ja-JP"));
+    card.append(word,reading,meaning,play); list.append(card);
+  }
+}
+function renderLessonChecks() {
+  for (const [id, selected, onChange] of [["dict-lessons",state.dictLessons,()=>newQuestion()],["match-lessons",state.matchLessons,()=>newMatchBoard()]]) {
+    const container = $(`#${id}`); container.replaceChildren();
+    trackCounts.forEach((_,index)=>{const label=document.createElement("label");const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(index);check.addEventListener("change",()=>{if(check.checked)selected.add(index);else selected.delete(index);onChange();});label.append(check,document.createTextNode(lessonLabel(index)));container.append(label);});
+  }
+}
+function selectedWords(lessons) {
+  const keys = new Set(); return [...lessons].flatMap((lesson)=>vocab[lesson]).filter((item)=>{const key=`${item.reading}|${item.meaning}`;if(keys.has(key))return false;keys.add(key);return true;});
+}
+function newQuestion(play = true) {
+  const pool = selectedWords(state.dictLessons); state.answered=false;
+  if (pool.length < 4) {state.question=null;renderQuestion(false);toast(translate("chooseLesson"));return;}
+  const last = state.question?.correct?.id;
+  const candidates = pool.filter((item)=>item.id!==last);
+  const correct = candidates[Math.floor(Math.random()*candidates.length)];
+  const usedText = new Set([answerText(correct)]); const usedMeaning = new Set([correct.meaning]);
+  const distractors = shuffle(pool).filter((item)=>{if(item.id===correct.id||usedText.has(answerText(item))||(state.promptMode==="en"&&usedMeaning.has(item.meaning)))return false;usedText.add(answerText(item));usedMeaning.add(item.meaning);return true;}).slice(0,3);
+  state.question={correct,choices:shuffle([correct,...distractors])}; renderQuestion(true); if (play) playPrompt();
+}
+function playPrompt() {if(!state.question)return;const item=state.question.correct;speech(state.promptMode==="ja"?item.reading:item.meaning,state.promptMode==="ja"?"ja-JP":"en-US");}
+function renderQuestion(resetFeedback) {
+  const question = state.question; $("#dict-lesson-badge").textContent = question ? lessonLabel(question.correct.lesson) : "";
+  const choices = $("#dict-choices"); choices.replaceChildren();
+  if (!question) { if(resetFeedback)$("#dict-feedback").textContent=translate("chooseLesson"); return; }
+  for (const item of question.choices) {
+    const button=document.createElement("button");button.type="button";button.lang="ja";button.textContent=answerText(item);button.disabled=state.answered;
+    if(state.answered&&item.id===question.correct.id)button.classList.add("correct");
+    button.addEventListener("click",()=>{if(state.answered)return;if(item.id===question.correct.id){state.answered=true;$("#dict-feedback").textContent=translate("correct");renderQuestion(false);}else{button.classList.add("wrong");$("#dict-feedback").textContent=translate("tryAgain");setTimeout(()=>button.classList.remove("wrong"),650);}});
+    choices.append(button);
+  }
+  if(resetFeedback)$("#dict-feedback").textContent="";
+}
+function newMatchBoard() {
+  const pool=selectedWords(state.matchLessons);state.matchSelected=null;state.matchDone=new Set();
+  if(pool.length<5){state.matchItems=[];renderMatchBoard(true);toast(translate("chooseLesson"));return;}
+  const used=new Set();state.matchItems=shuffle(pool).filter((item)=>{if(used.has(item.meaning))return false;used.add(item.meaning);return true;}).slice(0,5);
+  renderMatchBoard(true);
+}
+function renderMatchBoard(clearFeedback) {
+  const left=$("#match-japanese"),right=$("#match-english");left.replaceChildren();right.replaceChildren();
+  for(const item of state.matchItems){const button=document.createElement("button");button.type="button";button.className="jp";button.lang="ja";button.textContent=item.written;button.classList.toggle("selected",state.matchSelected===item.id);button.classList.toggle("matched",state.matchDone.has(item.id));button.disabled=state.matchDone.has(item.id);button.addEventListener("click",()=>{state.matchSelected=item.id;renderMatchBoard(false);});left.append(button);}
+  const meanings=shuffleStable(state.matchItems);
+  for(const item of meanings){const button=document.createElement("button");button.type="button";button.lang="en";button.textContent=item.meaning;button.classList.toggle("matched",state.matchDone.has(item.id));button.disabled=state.matchDone.has(item.id);button.addEventListener("click",()=>{if(!state.matchSelected){$("#match-feedback").textContent=translate("pickJapanese");return;}if(state.matchSelected===item.id){state.matchDone.add(item.id);state.matchSelected=null;$("#match-feedback").textContent=state.matchDone.size===state.matchItems.length?translate("allMatched"):translate("matched");renderMatchBoard(false);}else{$("#match-feedback").textContent=translate("tryAgain");button.classList.add("wrong");setTimeout(()=>button.classList.remove("wrong"),650);}});right.append(button);}
+  if(clearFeedback)$("#match-feedback").textContent="";
+}
+let matchOrder=[];
+function shuffleStable(items){const ids=items.map(({id})=>id).sort().join("|");if(matchOrder.key!==ids){matchOrder=shuffle(items);matchOrder.key=ids;}return matchOrder;}
+
+function bindEvents(){
+  $$(".nav-tab").forEach((button)=>button.addEventListener("click",()=>showView(button.dataset.view)));
+  $("#volume").addEventListener("input",(event)=>{state.volume=Number(event.target.value);$("#volume-value").textContent=state.volume;audio.volume=state.volume/100;});
+  $("#theme-toggle").addEventListener("click",()=>setTheme(state.theme==="day"?"night":"day"));
+  $("#language").addEventListener("change",(event)=>{state.language=event.target.value;safeSet("jss-language",state.language);applyLanguage();});
+  $("#fullscreen-toggle").addEventListener("click",async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast(translate("fullscreen"));}});
+  document.addEventListener("fullscreenchange",()=>{const label=document.fullscreenElement?translate("exitFullscreen"):translate("fullscreen");$("#fullscreen-toggle").setAttribute("aria-label",label);$("#fullscreen-toggle").title=label;});
+  $("#speak-reading").addEventListener("click",()=>speech(readings[state.readLesson].text,"ja-JP"));
+  $("#stop-reading").addEventListener("click",()=>window.speechSynthesis?.cancel());
+  $("#audio-files").addEventListener("change",async(event)=>{await importAudio(event.target.files);event.target.value="";});
+  $("#transcript-file").addEventListener("change",async(event)=>{if(event.target.files[0])await importTranscripts(event.target.files[0]);event.target.value="";});
+  $("#track-play").addEventListener("click",toggleTrackAudio);
+  audio.addEventListener("loadedmetadata",renderPlayer);audio.addEventListener("timeupdate",()=>{if(state.segmentB!==null&&audio.currentTime>=state.segmentB){if($("#loop-segment").checked){audio.currentTime=state.segmentA??0;audio.play().catch(()=>{});}else audio.pause();}renderPlayer();});
+  audio.addEventListener("play",renderPlayer);audio.addEventListener("pause",renderPlayer);
+  audio.addEventListener("ended",()=>{if($("#loop-segment").checked){audio.currentTime=state.segmentA??0;audio.play().catch(()=>{});}renderPlayer();});
+  $("#seek").addEventListener("input",(event)=>{if(Number.isFinite(audio.duration))audio.currentTime=Number(event.target.value)/1000*audio.duration;});
+  $("#set-a").addEventListener("click",()=>{state.segmentA=audio.currentTime;if(state.segmentB!==null&&state.segmentB<=state.segmentA)state.segmentB=null;renderPlayer();});
+  $("#set-b").addEventListener("click",()=>{if(audio.currentTime>(state.segmentA??0))state.segmentB=audio.currentTime;renderPlayer();});
+  $("#clear-segment").addEventListener("click",()=>{state.segmentA=null;state.segmentB=null;$("#loop-segment").checked=false;renderPlayer();});
+  $$("#script-tabs button").forEach((button)=>button.addEventListener("click",()=>{state.script=button.dataset.script;state.character=characterSet()[0];$$("#script-tabs button").forEach((b)=>b.classList.toggle("active",b===button));renderCharacterGrid();renderPractice();}));
+  $("#animate-strokes").addEventListener("click",animateStrokes);$("#clear-drawing").addEventListener("click",clearDrawing);
+  $("#vocab-search").addEventListener("input",renderVocab);
+  $$("#prompt-modes button").forEach((button)=>button.addEventListener("click",()=>{state.promptMode=button.dataset.mode;$$("#prompt-modes button").forEach((b)=>b.classList.toggle("active",b===button));newQuestion();}));
+  $$("#answer-scripts button").forEach((button)=>button.addEventListener("click",()=>{state.answerScript=button.dataset.answer;$$("#answer-scripts button").forEach((b)=>b.classList.toggle("active",b===button));renderQuestion(false);}));
+  $("#dict-replay").addEventListener("click",playPrompt);$("#dict-next").addEventListener("click",newQuestion);$("#new-match").addEventListener("click",newMatchBoard);
+  window.addEventListener("resize",()=>{if(state.view==="write")resizeCanvas();});
+  window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
+  initDrawing();
+}
+function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;audio.volume=.75;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");loadPublicContent();}
+init();

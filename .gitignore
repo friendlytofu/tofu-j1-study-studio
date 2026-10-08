@@ -1,0 +1,9 @@
+.DS_Store
+.env
+.env.*
+private/
+*.pdf
+*.epub
+*.mp3
+*.zip
+public/media/
