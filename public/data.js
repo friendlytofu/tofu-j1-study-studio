@@ -1,14 +1,5 @@
-// Original practice content. These are not transcriptions or a reproduction of
-// the textbook's vocabulary lists. The audio catalog only records supplied IDs.
+// Starter vocabulary and track IDs. The site does not bundle textbook passages or audio.
 export const trackCounts = [14, 18, 28, 14, 22];
-
-export const readings = [
-  { title: "はじめまして", text: "A：はじめまして。わたしはエマです。\nB：はじめまして。わたしはたけしです。\nA：どうぞよろしくおねがいします。", translations: { en:"A: Nice to meet you. I'm Emma. B: Nice to meet you. I'm Takeshi. A: I look forward to getting to know you.", zh:"A：初次见面，我是艾玛。B：初次见面，我是武。A：请多关照。", es:"A: Mucho gusto. Soy Emma. B: Mucho gusto. Soy Takeshi. A: Encantada de conocerte.", fr:"A : Enchantée, je suis Emma. B : Enchanté, je suis Takeshi. A : Ravie de faire ta connaissance.", de:"A: Freut mich. Ich bin Emma. B: Freut mich. Ich bin Takeshi. A: Schön, dich kennenzulernen." } },
-  { title: "わたしのこと", text: "わたしは大学生です。日本語をべんきょうしています。しゅみは音楽です。友だちとよく話します。", translations: { en:"I am a university student. I study Japanese. My hobby is music. I often talk with friends.", zh:"我是大学生。我在学习日语。我的爱好是音乐。我经常和朋友聊天。", es:"Soy estudiante universitaria. Estudio japonés. Mi pasatiempo es la música. Hablo a menudo con mis amigos.", fr:"Je suis étudiante à l'université. J'étudie le japonais. J'aime la musique. Je parle souvent avec mes amis.", de:"Ich studiere an der Universität und lerne Japanisch. Mein Hobby ist Musik. Ich spreche oft mit Freunden." } },
-  { title: "週末のよてい", text: "土曜日に友だちと映画を見ます。日曜日は家で本を読みます。とても楽しみです。", translations: { en:"On Saturday I will watch a movie with a friend. On Sunday I will read a book at home. I'm looking forward to it.", zh:"星期六我和朋友看电影。星期天我在家读书。我很期待。", es:"El sábado veré una película con un amigo. El domingo leeré un libro en casa. Tengo muchas ganas.", fr:"Samedi, je regarderai un film avec un ami. Dimanche, je lirai un livre chez moi. J'ai hâte.", de:"Am Samstag sehe ich mit einem Freund einen Film. Am Sonntag lese ich zu Hause ein Buch. Ich freue mich darauf." } },
-  { title: "きのうのこと", text: "きのう、図書館で日本語をべんきょうしました。そのあと、友だちとごはんを食べました。", translations: { en:"Yesterday I studied Japanese at the library. After that, I ate with a friend.", zh:"昨天我在图书馆学日语。之后和朋友一起吃了饭。", es:"Ayer estudié japonés en la biblioteca. Después comí con un amigo.", fr:"Hier, j'ai étudié le japonais à la bibliothèque. Ensuite, j'ai mangé avec un ami.", de:"Gestern habe ich in der Bibliothek Japanisch gelernt. Danach habe ich mit einem Freund gegessen." } },
-  { title: "町へ行きましょう", text: "今日はいい天気です。駅の近くに小さい店があります。いっしょに行きませんか。", translations: { en:"The weather is nice today. There is a small shop near the station. Shall we go together?", zh:"今天天气很好。车站附近有一家小店。我们一起去好吗？", es:"Hoy hace buen tiempo. Hay una tienda pequeña cerca de la estación. ¿Vamos juntos?", fr:"Il fait beau aujourd'hui. Il y a une petite boutique près de la gare. On y va ensemble ?", de:"Heute ist das Wetter schön. In der Nähe des Bahnhofs gibt es ein kleines Geschäft. Wollen wir zusammen hingehen?" } }
-];
 
 const raw = [
   [

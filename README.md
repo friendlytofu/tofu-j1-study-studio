@@ -1,8 +1,8 @@
 # Tofu Japanese Study Studio
 
-An independent Japanese study companion for lessons 0–4, built for Cloudflare Pages. It has listening and reading, kana and kanji writing, lesson vocabulary, dictation, matching, a romaji typing chase, and a private library for shared files. The interface supports English, Japanese, Chinese, Spanish, French, and German. It has day/night themes, full screen, four sound settings (mute, quiet, medium, loud), a skippable first-visit tour, and no saved scores or learner accounts.
+An independent Japanese study companion for lessons 0–4, built for Cloudflare Pages. It has numbered textbook tracks, kana and kanji writing, lesson vocabulary, dictation, matching, a sentence builder, branching conversations, a romaji typing chase, and a private library for shared files. The interface supports English, Japanese, Chinese, Korean, Spanish, French, and German. It has day/night themes, full screen, four sound settings (mute, quiet, medium, loud), a skippable first-visit tour, and no saved scores or learner accounts.
 
-This project is unaffiliated with the Tobira publisher. The repository and ZIP do **not** contain the textbook PDF, publisher audio, textbook passages, a password, or anyone's personal notes. The included original readings and fallback starter vocabulary are not a complete transcription of the book. Private lesson content belongs in Cloudflare KV, uploaded through the owner interface.
+This project is unaffiliated with the Tobira publisher. The repository and ZIP do **not** contain the textbook PDF, publisher audio, textbook passages, a password, or anyone's personal notes. The included original practice examples and fallback starter vocabulary are not a transcription of the book. Private lesson content belongs in Cloudflare KV, uploaded through the owner interface.
 
 ## The simple publishing path
 
@@ -84,10 +84,12 @@ Edit the site files at the same paths in GitHub and commit them. Cloudflare auto
 
 ## Study content and accuracy
 
-- **Listen & read:** Five original Japanese readings use your device's Japanese voice. The site catalogs 96 lesson 0–4 textbook track IDs. A shared MP3 is connected to a track only through the exact ID selected by the owner. The player supports seeking and a start/end loop. Visitors can also select personal MP3s for their own browser session without sharing them.
+- **Listen & read:** The site catalogs 96 lesson 0–4 textbook track IDs. A shared MP3 and transcript are connected to a track only through the exact ID selected by the owner. The player supports seeking and a start/end loop. Visitors can also select personal MP3s for their own browser session without sharing them. Some recordings have a noticeable English accent; use your sensei's pronunciation in class as your main model.
 - **Writing:** 46 basic hiragana, 46 basic katakana, and 31 lesson 3–4 kanji with dotted four-part practice squares. The animated guides load from the credited open projects below. Drawing still works if a guide cannot load.
 - **Vocabulary:** A small original starter selection is the fallback. When the owner uploads the private vocabulary file described above, its full lesson lists replace the fallback. English meanings stay in English in every interface language. Dictation and Matching skip items marked `practice: false`.
 - **Dictation and matching:** Lesson selection, Japanese or English device speech, written/kana answer choices, and immediate feedback. No answers or scores are saved.
+- **Sentence builder:** Nine original practice prompts across lessons 0–4. Tap Japanese word tiles, compare with one model sentence, reveal it, and hear it with your device's Japanese voice. A different order may still be valid Japanese; the comparison is a guide, not a grammar judgment.
+- **Conversation paths:** Five original mini scenes, one per lesson, with two decisions each. Choose a reply, see how the other speaker responds, listen to lines with device speech, and restart to explore another path. These are original practice dialogues, not textbook transcripts.
 - **Typing chase:** A ninja pursues a thief as the learner types lesson 0–4 vocabulary in romaji on an English keyboard. The displayed word, hiragana reading, English meaning, optional spelling hint, and typed text keep the task clear. Hide the hint to practice recall. Common spellings such as `shi` and `si` are accepted. Correct letters raise the ninja's speed; three thief speeds change difficulty. An original Japanese-inspired background loop can be switched off separately, and a large Japanese result message appears when the chase ends. Music and outcome notes follow the site sound level. The pool is built from the currently loaded vocabulary bank, including owner-uploaded words, and saves no typing data or result.
 - **Sound and tour:** The header has mute, quiet, medium, and loud settings for recordings, speech prompts, and a subtle interface click. Sound preference and whether the first-visit tour has been seen stay in the browser only. The `?` button reopens the skippable tour at any time.
 
@@ -114,8 +116,10 @@ public/_routes.json       Sends every request through the gate
 public/index.html          Site structure and owner upload form
 public/styles.css          Day/night and responsive design
 public/app.js              Player, practice, library, upload and controls
-public/data.js             Original readings, starter words, characters and track IDs
-public/i18n.js             Six interface-language dictionaries
+public/data.js             Starter words, characters and track IDs
+public/activities.js       Original sentence puzzles and conversation paths
+public/i18n.js             Interface-language dictionaries and lookup
+public/i18n-ko.js          Korean interface-language dictionary
 public/content.json        Empty optional public content map
 public/favicon.svg         Site icon
 ```

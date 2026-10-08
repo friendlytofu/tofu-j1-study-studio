@@ -1,7 +1,8 @@
-import { trackCounts, tracks, readings, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
+import { trackCounts, tracks, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
 import { t } from "./i18n.js";
 import { buildChasePool, initialChase, ninjaPace, advanceChase } from "./chase.js";
 import { ChaseAudio } from "./chase-audio.js";
+import { sentencePuzzles, dialogueScenes } from "./activities.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -19,6 +20,8 @@ let toastTimer;
 let strokeRequest = 0;
 const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, pool: [], word: null, prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "", showHint: true, musicEnabled: true };
 const chaseAudio = new ChaseAudio();
+const builder = { lesson:0, index:0, order:[], selected:[], revealed:false, feedback:"" };
+const dialogue = { lesson:0, branch:null, followup:null };
 const volumeValues = [0, .2, .5, 1];
 let clickContext;
 const tourSteps = [
@@ -29,6 +32,8 @@ const tourSteps = [
   { target:'.nav-tab[data-view="vocab"]', key:"tourVocab", view:"vocab" },
   { target:'.nav-tab[data-view="dictation"]', key:"tourDictation", view:"dictation" },
   { target:'.nav-tab[data-view="match"]', key:"tourMatch", view:"match" },
+  { target:'.nav-tab[data-view="builder"]', key:"tourBuilder", view:"builder" },
+  { target:'.nav-tab[data-view="dialogue"]', key:"tourDialogue", view:"dialogue" },
   { target:'.nav-tab[data-view="chase"]', key:"tourChase", view:"chase" },
   { target:"#chase-hint-toggle", key:"tourChaseHint", view:"chase" },
   { target:"#chase-music-toggle", key:"tourChaseMusic", view:"chase" },
@@ -93,7 +98,7 @@ function showTourStep(index) {
 function endTour() {
   tourIndex = -1;
   $("#tour-layer").hidden = true;
-  safeSet("jss-tour-seen-v2", "yes");
+  safeSet("jss-tour-seen-v3", "yes");
   $("#tour-open").focus();
 }
 function startTour() {
@@ -103,6 +108,7 @@ function startTour() {
 function lessonLabel(index) {
   if (state.language === "ja") return `第${index}課`;
   if (state.language === "zh") return `第${index}课`;
+  if (state.language === "ko") return `${index}과`;
   return `${translate("lesson")} ${index}`;
 }
 function toast(message) {
@@ -121,7 +127,7 @@ function applyLanguage() {
   document.title = translate("siteTitle");
   $$("[data-i18n]").forEach((element) => { element.textContent = translate(element.dataset.i18n); });
   $(".brand").setAttribute("aria-label", translate("siteTitle"));
-  for (const [selector, key] of [[".control-dock","controls"],["#language","interfaceLanguage"],[".section-nav","sections"],["#read-lessons","chooseLessonLabel"],["#vocab-lessons","chooseLessonLabel"],["#script-tabs","chooseScript"],["#draw-canvas","drawingCanvas"],["#seek","audioPosition"]]) {
+  for (const [selector, key] of [[".control-dock","controls"],["#language","interfaceLanguage"],[".section-nav","sections"],["#read-lessons","chooseLessonLabel"],["#vocab-lessons","chooseLessonLabel"],["#builder-lessons","chooseLessonLabel"],["#dialogue-lessons","chooseLessonLabel"],["#script-tabs","chooseScript"],["#draw-canvas","drawingCanvas"],["#seek","audioPosition"]]) {
     $(selector).setAttribute("aria-label", translate(key));
   }
   $("#vocab-search").placeholder = translate("search");
@@ -136,11 +142,11 @@ function applyLanguage() {
   $("#tour-open").setAttribute("aria-label", translate("tourOpen"));
   $("#tour-open").title = translate("tourOpen");
   if (tourIndex >= 0) showTourStep(tourIndex);
-  renderLessonPills(); renderReading(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
-  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderChase(); renderUploadTracks(); renderLibrary();
+  renderLessonPills(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
+  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderBuilder(); renderDialogue(); renderChase(); renderUploadTracks(); renderLibrary();
 }
 function showView(view) {
-  if (!["read","write","vocab","dictation","match","chase","library"].includes(view)) return;
+  if (!["read","write","vocab","dictation","match","builder","dialogue","chase","library"].includes(view)) return;
   if (state.view === "chase" && view !== "chase" && chase.active) stopChase("chasePaused");
   state.view = view;
   $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
@@ -150,7 +156,7 @@ function showView(view) {
   if (view === "write") { resizeCanvas(); loadStrokeArt(); }
 }
 function renderLessonPills() {
-  for (const [containerId, active, action] of [["read-lessons", state.readLesson, (index) => { state.readLesson = index; renderReading(); selectTrack(tracks.find((track) => track.lesson === index).id); }], ["vocab-lessons", state.vocabLesson, (index) => { state.vocabLesson = index; renderVocab(); }]]) {
+  for (const [containerId, active, action] of [["read-lessons", state.readLesson, (index) => { state.readLesson = index; selectTrack(tracks.find((track) => track.lesson === index).id); }], ["vocab-lessons", state.vocabLesson, (index) => { state.vocabLesson = index; renderVocab(); }]]) {
     const container = $(`#${containerId}`); container.replaceChildren();
     trackCounts.forEach((_, index) => {
       const button = document.createElement("button"); button.type = "button"; button.textContent = lessonLabel(index);
@@ -158,13 +164,6 @@ function renderLessonPills() {
       button.addEventListener("click", () => { action(index); renderLessonPills(); }); container.append(button);
     });
   }
-}
-function renderReading() {
-  const item = readings[state.readLesson];
-  $("#reading-title").textContent = item.title;
-  $("#reading-text").textContent = item.text;
-  $("#reading-translation").textContent = state.language === "ja" ? "" : item.translations[state.language] || item.translations.en;
-  $("#reading-translation").lang = state.language;
 }
 function formatTime(value) { if (!Number.isFinite(value)) return "0:00"; const n = Math.max(0, Math.floor(value)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2,"0")}`; }
 function renderTrackList() {
@@ -401,6 +400,103 @@ function renderMatchBoard(clearFeedback) {
 }
 let matchOrder=[];
 function shuffleStable(items){const ids=items.map(({id})=>id).sort().join("|");if(matchOrder.key!==ids){matchOrder=shuffle(items);matchOrder.key=ids;}return matchOrder;}
+
+function lessonPuzzles() { return sentencePuzzles.filter((puzzle) => puzzle.lesson === builder.lesson); }
+function currentPuzzle() { return lessonPuzzles()[builder.index % lessonPuzzles().length]; }
+function resetBuilder() {
+  builder.order = shuffle(currentPuzzle().tiles.map((_, index) => index));
+  builder.selected = [];
+  builder.revealed = false;
+  builder.feedback = "";
+  renderBuilder();
+}
+function renderBuilder() {
+  const puzzle = currentPuzzle();
+  const lessonButtons = $("#builder-lessons"); lessonButtons.replaceChildren();
+  for (let lesson = 0; lesson <= 4; lesson++) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = lessonLabel(lesson);
+    button.classList.toggle("active", builder.lesson === lesson);
+    button.setAttribute("aria-pressed", String(builder.lesson === lesson));
+    button.addEventListener("click", () => { builder.lesson = lesson; builder.index = 0; resetBuilder(); });
+    lessonButtons.append(button);
+  }
+  $("#builder-cue").textContent = puzzle.cue;
+  $("#builder-progress").textContent = `${lessonLabel(builder.lesson)} · ${builder.index + 1} / ${lessonPuzzles().length}`;
+  const answer = $("#builder-answer"), bank = $("#builder-bank");
+  answer.replaceChildren(); bank.replaceChildren();
+  if (!builder.selected.length) {
+    const placeholder = document.createElement("span"); placeholder.className = "builder-placeholder";
+    placeholder.textContent = translate("builderPlaceholder"); answer.append(placeholder);
+  }
+  for (const index of builder.selected) {
+    const tile = document.createElement("button"); tile.type = "button"; tile.className = "builder-tile placed";
+    tile.lang = "ja"; tile.textContent = puzzle.tiles[index];
+    tile.setAttribute("aria-label", `${puzzle.tiles[index]} · ${translate("builderRemove")}`);
+    tile.addEventListener("click", () => { builder.selected = builder.selected.filter((value) => value !== index); builder.feedback = ""; builder.revealed = false; renderBuilder(); });
+    answer.append(tile);
+  }
+  for (const index of builder.order.filter((value) => !builder.selected.includes(value))) {
+    const tile = document.createElement("button"); tile.type = "button"; tile.className = "builder-tile";
+    tile.lang = "ja"; tile.textContent = puzzle.tiles[index];
+    tile.addEventListener("click", () => { builder.selected.push(index); builder.feedback = ""; renderBuilder(); });
+    bank.append(tile);
+  }
+  $("#builder-feedback").textContent = builder.feedback ? translate(builder.feedback) : "";
+  $("#builder-model").hidden = !builder.revealed;
+  $("#builder-model-placeholder").hidden = builder.revealed;
+  $("#builder-model").textContent = puzzle.target;
+  $("#builder-listen").disabled = !builder.revealed;
+}
+function checkBuilder() {
+  const puzzle = currentPuzzle();
+  if (builder.selected.length < puzzle.tiles.length) builder.feedback = "builderIncomplete";
+  else if (builder.selected.every((index, position) => index === position)) {
+    builder.feedback = "builderMatched";
+    builder.revealed = true;
+  } else builder.feedback = "builderDifferent";
+  renderBuilder();
+}
+
+function renderDialogue() {
+  const lessonButtons = $("#dialogue-lessons"); lessonButtons.replaceChildren();
+  for (let lesson = 0; lesson <= 4; lesson++) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = lessonLabel(lesson);
+    button.classList.toggle("active", dialogue.lesson === lesson);
+    button.setAttribute("aria-pressed", String(dialogue.lesson === lesson));
+    button.addEventListener("click", () => { dialogue.lesson = lesson; dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
+    lessonButtons.append(button);
+  }
+  const scene = dialogueScenes.find((item) => item.lesson === dialogue.lesson);
+  $("#dialogue-scene-title").textContent = translate(scene.titleKey);
+  $("#dialogue-progress").textContent = `${lessonLabel(scene.lesson)} · ${dialogue.followup !== null ? "2 / 2" : dialogue.branch !== null ? "1 / 2" : "0 / 2"}`;
+  const transcript = $("#dialogue-transcript"); transcript.replaceChildren();
+  const bubble = (speaker, line) => {
+    const row = document.createElement("div"); row.className = `dialogue-bubble ${speaker}`;
+    const label = document.createElement("span"); label.className = "dialogue-speaker";
+    label.textContent = translate(speaker === "partner" ? "dialoguePartner" : "dialogueYou");
+    const text = document.createElement("p"); text.className = "dialogue-text"; text.lang = "ja"; text.textContent = line;
+    const listen = document.createElement("button"); listen.type = "button"; listen.className = "dialogue-hear";
+    listen.textContent = "▶"; listen.setAttribute("aria-label", `${translate("dialogueHear")}: ${line}`);
+    listen.addEventListener("click", () => speech(line, "ja-JP"));
+    row.append(label, text, listen); transcript.append(row);
+  };
+  bubble("partner", scene.opening);
+  const branch = dialogue.branch === null ? null : scene.branches[dialogue.branch];
+  if (branch) { bubble("you", branch.reply); bubble("partner", branch.npc); }
+  if (branch && dialogue.followup !== null) {
+    const ending = branch.followups[dialogue.followup];
+    bubble("you", ending.reply); bubble("partner", ending.npc);
+  }
+  const choices = $("#dialogue-choices"); choices.replaceChildren();
+  const options = !branch ? scene.branches : dialogue.followup === null ? branch.followups : [];
+  for (const [index, option] of options.entries()) {
+    const button = document.createElement("button"); button.type = "button"; button.className = "dialogue-choice"; button.lang = "ja";
+    button.textContent = option.reply;
+    button.addEventListener("click", () => { if (!branch) dialogue.branch = index; else dialogue.followup = index; renderDialogue(); });
+    choices.append(button);
+  }
+  $("#dialogue-prompt").textContent = options.length ? translate("dialogueChoose") : translate("dialogueComplete");
+}
 
 function renderChase() {
   const scene = $("#chase-scene");
@@ -676,8 +772,6 @@ function bindEvents(){
   $("#language").addEventListener("change",(event)=>{state.language=event.target.value;safeSet("jss-language",state.language);applyLanguage();});
   $("#fullscreen-toggle").addEventListener("click",async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast(translate("fullscreen"));}});
   document.addEventListener("fullscreenchange",()=>{const label=document.fullscreenElement?translate("exitFullscreen"):translate("fullscreen");$("#fullscreen-toggle").setAttribute("aria-label",label);$("#fullscreen-toggle").title=label;});
-  $("#speak-reading").addEventListener("click",()=>speech(readings[state.readLesson].text,"ja-JP"));
-  $("#stop-reading").addEventListener("click",()=>window.speechSynthesis?.cancel());
   $("#audio-files").addEventListener("change",async(event)=>{await importAudio(event.target.files);event.target.value="";});
   $("#transcript-file").addEventListener("change",async(event)=>{if(event.target.files[0])await importTranscripts(event.target.files[0]);event.target.value="";});
   $("#track-play").addEventListener("click",toggleTrackAudio);
@@ -694,6 +788,11 @@ function bindEvents(){
   $$("#prompt-modes button").forEach((button)=>button.addEventListener("click",()=>{state.promptMode=button.dataset.mode;$$("#prompt-modes button").forEach((b)=>b.classList.toggle("active",b===button));newQuestion();}));
   $$("#answer-scripts button").forEach((button)=>button.addEventListener("click",()=>{state.answerScript=button.dataset.answer;$$("#answer-scripts button").forEach((b)=>b.classList.toggle("active",b===button));renderQuestion(false);}));
   $("#dict-replay").addEventListener("click",playPrompt);$("#dict-next").addEventListener("click",newQuestion);$("#new-match").addEventListener("click",newMatchBoard);
+  $("#builder-check").addEventListener("click", checkBuilder);
+  $("#builder-reveal").addEventListener("click", () => { builder.revealed = true; builder.feedback = "builderRevealed"; renderBuilder(); });
+  $("#builder-next").addEventListener("click", () => { builder.index = (builder.index + 1) % lessonPuzzles().length; resetBuilder(); });
+  $("#builder-listen").addEventListener("click", () => speech(currentPuzzle().target, "ja-JP"));
+  $("#dialogue-restart").addEventListener("click", () => { dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
   $$("#chase-levels button").forEach((button) => button.addEventListener("click", () => { if (chase.active) return; chase.level = button.dataset.level; renderChase(); }));
   $("#chase-hint-toggle").addEventListener("click", () => { chase.showHint = !chase.showHint; renderChase(); });
   $("#chase-music-toggle").addEventListener("click", () => { chase.musicEnabled = !chase.musicEnabled; if (chase.active && chase.musicEnabled) chaseAudio.start(); else chaseAudio.stop(); renderChase(); });
@@ -720,5 +819,5 @@ function bindEvents(){
   window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
   initDrawing();
 }
-async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v2"))startTour();}
+async function init(){if(!["en","ja","zh","ko","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;resetBuilder();bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v3"))startTour();}
 init();
