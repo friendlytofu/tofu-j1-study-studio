@@ -141,6 +141,8 @@ function applyLanguage() {
   setVolume(state.volume);
   $("#tour-open").setAttribute("aria-label", translate("tourOpen"));
   $("#tour-open").title = translate("tourOpen");
+  $("#volume-levels").setAttribute("aria-label", translate("soundLevel"));
+  $(".footer-corner a").setAttribute("aria-label", translate("githubProfile"));
   if (tourIndex >= 0) showTourStep(tourIndex);
   renderLessonPills(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
   renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderBuilder(); renderDialogue(); renderChase(); renderUploadTracks(); renderLibrary();

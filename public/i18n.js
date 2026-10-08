@@ -90,5 +90,15 @@ Object.assign(messages.es, {tourChaseHint:"Oculta la escritura para recordar el 
 Object.assign(messages.fr, {tourChaseHint:"Masquez l’écriture pour retrouver le romaji vous-même. Vous pouvez la réafficher.",tourChaseMusic:"Activez ou désactivez la musique originale. Le contrôle supérieur règle son volume et le son final."});
 Object.assign(messages.de, {tourChaseHint:"Verbirg die Schreibweise, um Romaji selbst zu erinnern. Du kannst sie wieder anzeigen.",tourChaseMusic:"Schalte hier die originale Musik um. Oben regelst du Musik und Ergebniston."});
 messages.ko = koreanMessages;
+const accessibilityLabels = {
+  en:{soundLevel:"Sound level",githubProfile:"Tofu on GitHub"},
+  ja:{soundLevel:"音量レベル",githubProfile:"GitHubのTofu"},
+  zh:{soundLevel:"音量级别",githubProfile:"GitHub 上的 Tofu"},
+  ko:{soundLevel:"소리 크기",githubProfile:"GitHub의 Tofu"},
+  es:{soundLevel:"Nivel de sonido",githubProfile:"Tofu en GitHub"},
+  fr:{soundLevel:"Niveau sonore",githubProfile:"Tofu sur GitHub"},
+  de:{soundLevel:"Lautstärke",githubProfile:"Tofu auf GitHub"}
+};
+for (const [language, labels] of Object.entries(accessibilityLabels)) Object.assign(messages[language], labels);
 
 export const t = (language, key) => messages[language]?.[key] ?? messages.en[key] ?? key;
