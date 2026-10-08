@@ -355,7 +355,7 @@ async function loadSharedMaterials() {
     const data = await response.json();
     state.sharedMaterials = Array.isArray(data.items) ? data.items : [];
     state.libraryError = false;
-    for (const item of state.sharedMaterials) {
+    for (const item of [...state.sharedMaterials].sort((a, b) => a.uploaded.localeCompare(b.uploaded))) {
       if (!knownTracks.has(item.trackId)) continue;
       const url = `/api/materials/file?id=${encodeURIComponent(item.id)}`;
       if (item.type === "mp3") state.publicAudio[item.trackId] = url;

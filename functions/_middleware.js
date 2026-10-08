@@ -4,6 +4,9 @@ const encoder = new TextEncoder();
 const COOKIE = "tofu_study_session";
 const SESSION_SECONDS = 8 * 60 * 60;
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const CHUNK_BYTES = 8 * 1024 * 1024; // KV values may be at most 25 MiB.
+const META_PREFIX = "materials:meta:";
+const CHUNK_PREFIX = "materials:chunk:";
 const TRACK_COUNTS = [14, 18, 28, 14, 22];
 const TYPES = {
   mp3: "audio/mpeg",
@@ -82,32 +85,26 @@ function isTrackForLesson(id, lesson) {
 function titleOf(value) {
   return value.trim().slice(0, 120).replace(/[\u0000-\u001f\u007f]/g, "");
 }
-function materialRecord(object) {
-  const meta = object.customMetadata || {};
-  const id = /^materials\/([0-9a-f-]{36})\.(mp3|pdf|txt|md)$/.exec(object.key)?.[1];
-  if (!id || !/^[0-4]$/.test(meta.lesson || "")) return null;
-  return {
-    id, lesson: Number(meta.lesson), trackId: meta.trackId || "",
-    title: meta.title || `Material ${id.slice(0, 8)}`,
-    name: meta.name || `material.${meta.extension || "txt"}`,
-    type: meta.extension || "txt", size: object.size,
-    uploaded: object.uploaded?.toISOString?.() || ""
-  };
+function materialRecord(key) {
+  const id = key.name.slice(META_PREFIX.length);
+  const record = key.metadata;
+  if (!/^[0-9a-f-]{36}$/.test(id) || !record || record.id !== id || !Number.isInteger(record.lesson) || record.lesson < 0 || record.lesson > 4 || !Object.hasOwn(TYPES, record.type)) return null;
+  return record;
 }
-async function listMaterials(bucket) {
+async function listMaterials(kv) {
   const items = [];
   let cursor;
   do {
-    const page = await bucket.list({ prefix: "materials/", limit: 1000, cursor, include: ["customMetadata"] });
-    for (const object of page.objects) {
-      const record = materialRecord(object);
+    const page = await kv.list({ prefix: META_PREFIX, limit: 1000, cursor });
+    for (const key of page.keys) {
+      const record = materialRecord(key);
       if (record) items.push(record);
     }
-    cursor = page.truncated ? page.cursor : undefined;
+    cursor = page.list_complete ? undefined : page.cursor;
   } while (cursor && items.length < 5000);
   return items.sort((a, b) => a.lesson - b.lesson || a.title.localeCompare(b.title));
 }
-async function uploadMaterial(request, bucket) {
+async function uploadMaterial(request, kv) {
   const length = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(length) && length > MAX_UPLOAD_BYTES + 100_000) return json({ error: "File is too large (50 MB maximum)." }, 413);
   let form;
@@ -122,38 +119,71 @@ async function uploadMaterial(request, bucket) {
   if (!title || !Number.isInteger(lesson) || lesson < 0 || lesson > 4 || !isTrackForLesson(trackId, lesson)) return json({ error: "Check the title, lesson, and track number." }, 400);
   if (extension === "mp3" && !trackId) return json({ error: "Choose the matching track number for an MP3." }, 400);
   const id = crypto.randomUUID();
-  const key = `materials/${id}.${extension}`;
-  await bucket.put(key, file, {
-    httpMetadata: { contentType: TYPES[extension] },
-    customMetadata: { title, lesson: String(lesson), trackId, name: titleOf(file.name), extension }
-  });
-  return json({ ok: true, id }, 201);
+  const record = { id, lesson, trackId, title, name: titleOf(file.name), type: extension, size: file.size, uploaded: new Date().toISOString() };
+  const written = [];
+  try {
+    for (let index = 0; index < Math.ceil(file.size / CHUNK_BYTES); index++) {
+      const key = `${CHUNK_PREFIX}${id}:${index}`;
+      await kv.put(key, await file.slice(index * CHUNK_BYTES, (index + 1) * CHUNK_BYTES).arrayBuffer());
+      written.push(key);
+    }
+    // Publish the listing last, after all file pieces were accepted.
+    await kv.put(`${META_PREFIX}${id}`, JSON.stringify(record), { metadata: record });
+  } catch {
+    await Promise.allSettled(written.map((key) => kv.delete(key)));
+    return json({ error: "Storage could not accept this file." }, 503);
+  }
+  return json({ ok: true, item: record }, 201);
 }
-async function serveMaterial(request, bucket, url) {
+function byteRange(header, size) {
+  if (!header) return { start: 0, end: size - 1, partial: false };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header);
+  if (!match || (!match[1] && !match[2])) return null;
+  let start, end;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isSafeInteger(suffix) || suffix < 1) return null;
+    start = Math.max(0, size - suffix); end = size - 1;
+  } else {
+    start = Number(match[1]); end = match[2] ? Number(match[2]) : size - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return null;
+    end = Math.min(end, size - 1);
+  }
+  return start >= size || end < start ? null : { start, end, partial: true };
+}
+async function serveMaterial(request, kv, url) {
   const id = url.searchParams.get("id") || "";
   if (!/^[0-9a-f-]{36}$/.test(id)) return json({ error: "File not found." }, 404);
-  for (const extension of Object.keys(TYPES)) {
-    const rangeHeader = request.headers.get("Range");
-    if (rangeHeader && !/^bytes=(\d+-\d*|-\d+)$/.test(rangeHeader)) return reply(null, 416);
-    const object = await bucket.get(`materials/${id}.${extension}`, rangeHeader ? { range: request.headers } : undefined);
-    if (!object) continue;
-    const headers = {
-      "Content-Type": TYPES[extension],
-      "Content-Disposition": `inline; filename="material.${extension}"`,
-      "Accept-Ranges": "bytes"
-    };
-    if (object.httpEtag) headers.ETag = object.httpEtag;
-    if (object.range) {
-      const offset = object.range.offset ?? object.size - object.range.suffix;
-      const length = Math.min(object.range.length ?? object.range.suffix ?? object.size - offset, object.size - offset);
-      headers["Content-Range"] = `bytes ${offset}-${offset + length - 1}/${object.size}`;
-      headers["Content-Length"] = String(length);
-      return reply(request.method === "HEAD" ? null : object.body, 206, headers);
+  const record = await kv.get(`${META_PREFIX}${id}`, "json");
+  if (!record || record.id !== id || !Object.hasOwn(TYPES, record.type) || !Number.isSafeInteger(record.size) || record.size < 1 || record.size > MAX_UPLOAD_BYTES) return json({ error: "File not found." }, 404);
+  const range = byteRange(request.headers.get("Range"), record.size);
+  if (!range) return reply(null, 416, { "Content-Range": `bytes */${record.size}` });
+  const headers = {
+    "Content-Type": TYPES[record.type],
+    "Content-Disposition": `inline; filename="material.${record.type}"`,
+    "Accept-Ranges": "bytes",
+    "Content-Length": String(range.end - range.start + 1)
+  };
+  if (range.partial) headers["Content-Range"] = `bytes ${range.start}-${range.end}/${record.size}`;
+  if (request.method === "HEAD") return reply(null, range.partial ? 206 : 200, headers);
+  let position = range.start;
+  const body = new ReadableStream({
+    async pull(controller) {
+      if (position > range.end) { controller.close(); return; }
+      const index = Math.floor(position / CHUNK_BYTES);
+      try {
+        const buffer = await kv.get(`${CHUNK_PREFIX}${id}:${index}`, "arrayBuffer");
+        if (!buffer) throw new Error("Missing file piece");
+        const bytes = new Uint8Array(buffer);
+        const within = position % CHUNK_BYTES;
+        const count = Math.min(bytes.length - within, range.end - position + 1);
+        if (count < 1) throw new Error("Invalid file piece");
+        controller.enqueue(bytes.subarray(within, within + count));
+        position += count;
+      } catch (error) { controller.error(error); }
     }
-    headers["Content-Length"] = String(object.size);
-    return reply(request.method === "HEAD" ? null : object.body, 200, headers);
-  }
-  return json({ error: "File not found." }, 404);
+  });
+  return reply(body, range.partial ? 206 : 200, headers);
 }
 
 // The sign-in page has no external assets, so it works while all other assets stay private.
@@ -200,19 +230,19 @@ export async function onRequest(context) {
   }
   context.data.role = session.role;
   if (url.pathname === "/api/materials") {
-    if (!env.MATERIALS) return json({ error: "Private material storage is not configured." }, 503);
-    if (request.method === "GET") return json({ items: await listMaterials(env.MATERIALS) });
+    if (!env.MATERIALS_KV) return json({ error: "Private material storage is not configured." }, 503);
+    if (request.method === "GET") return json({ items: await listMaterials(env.MATERIALS_KV) });
     if (request.method === "POST") {
       if (session.role !== "admin") return json({ error: "Admin access required." }, 403);
       if (!sameOrigin(request)) return json({ error: "Forbidden." }, 403);
-      return uploadMaterial(request, env.MATERIALS);
+      return uploadMaterial(request, env.MATERIALS_KV);
     }
     return json({ error: "Method not allowed." }, 405, { Allow: "GET, POST" });
   }
   if (url.pathname === "/api/materials/file") {
     if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "Method not allowed." }, 405, { Allow: "GET, HEAD" });
-    if (!env.MATERIALS) return json({ error: "Private material storage is not configured." }, 503);
-    return serveMaterial(request, env.MATERIALS, url);
+    if (!env.MATERIALS_KV) return json({ error: "Private material storage is not configured." }, 503);
+    return serveMaterial(request, env.MATERIALS_KV, url);
   }
   if (url.pathname.startsWith("/api/")) return json({ error: "Not found." }, 404);
   const response = await context.next();
