@@ -376,6 +376,7 @@ async function loadSession() {
     const data = await response.json();
     state.role = data.role;
     $("#admin-upload").hidden = data.role !== "admin";
+    $("#admin-bulk-upload").hidden = data.role !== "admin";
   } catch { /* Leave owner controls hidden if the session cannot be read. */ }
 }
 async function uploadSharedMaterial(event) {
@@ -390,6 +391,52 @@ async function uploadSharedMaterial(event) {
     status.textContent = translate("uploadDone"); form.reset(); renderUploadTracks(); await loadSharedMaterials();
   } catch { status.textContent = translate("uploadFailed"); }
   finally { button.disabled = false; }
+}
+
+async function uploadNumberedAudio(event) {
+  event.preventDefault();
+  const form = $("#admin-bulk-upload");
+  const files = [...form.querySelector("input[name='files']").files];
+  const status = $("#bulk-status");
+  const button = form.querySelector("button[type='submit']");
+  const selected = new Set();
+  const items = [];
+  for (const file of files) {
+    const match = /^(L0[0-4]-\d{2})\.mp3$/i.exec(file.name);
+    const id = match?.[1].toUpperCase();
+    if (!id || !knownTracks.has(id) || selected.has(id) || !file.size || file.size > 50 * 1024 * 1024) {
+      status.textContent = `${translate("bulkInvalid")} ${file.name}`;
+      return;
+    }
+    selected.add(id);
+    items.push({ id, file, lesson: Number(id.slice(1, 3)) });
+  }
+  if (!items.length) return;
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/materials");
+    if (!response.ok) throw new Error("Could not inspect existing files");
+    const data = await response.json();
+    const existing = new Set((data.items || []).filter((item) => item.type === "mp3").map((item) => item.trackId));
+    const pending = items.filter((item) => !existing.has(item.id));
+    let uploaded = 0;
+    for (const item of pending) {
+      status.textContent = `${translate("bulkUploading")} ${uploaded + 1}/${pending.length} · ${item.id}`;
+      const body = new FormData();
+      body.set("title", item.id);
+      body.set("lesson", String(item.lesson));
+      body.set("trackId", item.id);
+      body.set("file", item.file);
+      const result = await fetch("/api/materials", { method: "POST", body });
+      if (!result.ok) throw new Error(item.id);
+      uploaded++;
+    }
+    status.textContent = `${translate("bulkDone")} ${uploaded} · ${translate("bulkSkipped")} ${items.length - uploaded}`;
+    form.reset();
+    await loadSharedMaterials();
+  } catch (error) {
+    status.textContent = `${translate("bulkFailed")} ${error.message || ""}`;
+  } finally { button.disabled = false; }
 }
 
 function bindEvents(){
@@ -421,6 +468,7 @@ function bindEvents(){
   $("#library-refresh").addEventListener("click", loadSharedMaterials);
   $("#upload-lesson").addEventListener("change", renderUploadTracks);
   $("#admin-upload").addEventListener("submit", uploadSharedMaterial);
+  $("#admin-bulk-upload").addEventListener("submit", uploadNumberedAudio);
   $("#admin-upload input[name='file']").addEventListener("change", (event) => {
     const file = event.target.files[0]; if (!file) return;
     const title = $("#admin-upload input[name='title']");

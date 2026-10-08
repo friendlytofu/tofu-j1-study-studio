@@ -72,6 +72,8 @@ If you set up the older `MATERIALS` R2 binding, remove that binding after KV wor
 5. For a `.txt` or `.md` transcript that matches a numbered recording, select the same track ID. It will display beside that track. Only choose a track after comparing the entire text with the audio. PDF and unnumbered text files remain available from the Library.
 6. Sign out. Sign in with the **reader** password in a separate browser session to check what readers can see. Readers cannot see the upload form or upload through the API.
 
+For many numbered recordings, use **Library → Upload numbered audio together**. Select all matching MP3 files (or one lesson at a time). The site checks names such as `L04-01.mp3`, derives the lesson and exact track, uploads one file at a time, and skips tracks already in the library. Keep the page open until the progress message says it is done. If it stops, select the same files again; completed tracks will be skipped. Text and PDF files still use **Add a shared file**, where you must review any track match yourself.
+
 The owner controls are enforced by the Cloudflare Function, not just hidden in the browser. Uploaded files are available to anyone who has the reader password, so only upload material you are allowed to share. Changing the reader password stops future sign-ins with the old password; to end existing 8-hour sessions immediately, also change `SESSION_SECRET` and redeploy.
 
 ### 6. Publish later changes
