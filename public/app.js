@@ -9,7 +9,8 @@ const state = {
   view: "read", readLesson: 0, vocabLesson: 0, script: "hiragana", character: "あ",
   track: "L00-01", audioFiles: new Map(), transcripts: {}, publicAudio: {}, segmentA: null, segmentB: null,
   dictLessons: new Set([0]), matchLessons: new Set([0]), promptMode: "ja", answerScript: "written", question: null, answered: false,
-  matchItems: [], matchSelected: null, matchDone: new Set(), strokeSvg: null
+  matchItems: [], matchSelected: null, matchDone: new Set(), strokeSvg: null,
+  role: "reader", sharedMaterials: [], libraryError: false
 };
 const audio = $("#track-audio");
 let toastTimer;
@@ -51,10 +52,10 @@ function applyLanguage() {
   $("#track-play").setAttribute("aria-label", translate("trackPlay"));
   $("#dict-replay").setAttribute("aria-label", translate("replay"));
   renderLessonPills(); renderReading(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
-  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false);
+  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderUploadTracks(); renderLibrary();
 }
 function showView(view) {
-  if (!["read","write","vocab","dictation","match"].includes(view)) return;
+  if (!["read","write","vocab","dictation","match","library"].includes(view)) return;
   state.view = view;
   $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $(`.nav-tab[data-view="${view}"]`).scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -315,6 +316,82 @@ function renderMatchBoard(clearFeedback) {
 let matchOrder=[];
 function shuffleStable(items){const ids=items.map(({id})=>id).sort().join("|");if(matchOrder.key!==ids){matchOrder=shuffle(items);matchOrder.key=ids;}return matchOrder;}
 
+function renderUploadTracks() {
+  const lesson = Number($("#upload-lesson").value);
+  const select = $("#upload-track");
+  const previous = select.value;
+  select.replaceChildren();
+  const none = document.createElement("option"); none.value = ""; none.textContent = translate("noTrack"); select.append(none);
+  for (const track of tracks.filter((item) => item.lesson === lesson)) {
+    const option = document.createElement("option"); option.value = track.id; option.textContent = track.id; select.append(option);
+  }
+  if ([...select.options].some((option) => option.value === previous)) select.value = previous;
+}
+function renderLibrary() {
+  const list = $("#library-list"); list.replaceChildren();
+  if (state.libraryError) { const p = document.createElement("p"); p.className = "empty-message"; p.textContent = translate("libraryUnavailable"); list.append(p); return; }
+  const lesson = $("#library-lesson").value;
+  const items = state.sharedMaterials.filter((item) => lesson === "all" || item.lesson === Number(lesson));
+  if (!items.length) { const p = document.createElement("p"); p.className = "empty-message"; p.textContent = translate("libraryEmpty"); list.append(p); return; }
+  for (const item of items) {
+    const card = document.createElement("article"); card.className = "library-item";
+    const title = document.createElement("strong"); title.textContent = item.title;
+    const meta = document.createElement("small"); meta.textContent = `${lessonLabel(item.lesson)} · ${item.trackId || item.type.toUpperCase()}`;
+    const actions = document.createElement("div"); actions.className = "library-actions";
+    if (item.type === "mp3" && item.trackId && knownTracks.has(item.trackId)) {
+      const button = document.createElement("button"); button.type = "button"; button.textContent = translate("libraryPlay");
+      button.addEventListener("click", () => { state.readLesson = item.lesson; renderLessonPills(); selectTrack(item.trackId); showView("read"); toggleTrackAudio(); });
+      actions.append(button);
+    } else {
+      const link = document.createElement("a"); link.href = `/api/materials/file?id=${encodeURIComponent(item.id)}`; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = translate("libraryOpen"); actions.append(link);
+    }
+    card.append(title, meta, actions); list.append(card);
+  }
+}
+async function loadSharedMaterials() {
+  try {
+    const response = await fetch("/api/materials");
+    if (!response.ok) throw new Error("materials");
+    const data = await response.json();
+    state.sharedMaterials = Array.isArray(data.items) ? data.items : [];
+    state.libraryError = false;
+    for (const item of state.sharedMaterials) {
+      if (!knownTracks.has(item.trackId)) continue;
+      const url = `/api/materials/file?id=${encodeURIComponent(item.id)}`;
+      if (item.type === "mp3") state.publicAudio[item.trackId] = url;
+      if (item.type === "txt" || item.type === "md") {
+        try {
+          const textResponse = await fetch(url);
+          if (textResponse.ok) state.transcripts[item.trackId] = { text: (await textResponse.text()).slice(0, 100000) };
+        } catch { /* The file remains available in the library. */ }
+      }
+    }
+    selectTrack(state.track); renderLibrary();
+  } catch { state.libraryError = true; renderLibrary(); }
+}
+async function loadSession() {
+  try {
+    const response = await fetch("/api/session");
+    if (!response.ok) { location.replace("/"); return; }
+    const data = await response.json();
+    state.role = data.role;
+    $("#admin-upload").hidden = data.role !== "admin";
+  } catch { /* Leave owner controls hidden if the session cannot be read. */ }
+}
+async function uploadSharedMaterial(event) {
+  event.preventDefault();
+  const form = $("#admin-upload");
+  const button = form.querySelector("button[type='submit']");
+  const status = $("#upload-status");
+  button.disabled = true; status.textContent = translate("uploading");
+  try {
+    const response = await fetch("/api/materials", { method: "POST", body: new FormData(form) });
+    if (!response.ok) throw new Error((await response.json()).error);
+    status.textContent = translate("uploadDone"); form.reset(); renderUploadTracks(); await loadSharedMaterials();
+  } catch { status.textContent = translate("uploadFailed"); }
+  finally { button.disabled = false; }
+}
+
 function bindEvents(){
   $$(".nav-tab").forEach((button)=>button.addEventListener("click",()=>showView(button.dataset.view)));
   $("#volume").addEventListener("input",(event)=>{state.volume=Number(event.target.value);$("#volume-value").textContent=state.volume;audio.volume=state.volume/100;});
@@ -340,9 +417,21 @@ function bindEvents(){
   $$("#prompt-modes button").forEach((button)=>button.addEventListener("click",()=>{state.promptMode=button.dataset.mode;$$("#prompt-modes button").forEach((b)=>b.classList.toggle("active",b===button));newQuestion();}));
   $$("#answer-scripts button").forEach((button)=>button.addEventListener("click",()=>{state.answerScript=button.dataset.answer;$$("#answer-scripts button").forEach((b)=>b.classList.toggle("active",b===button));renderQuestion(false);}));
   $("#dict-replay").addEventListener("click",playPrompt);$("#dict-next").addEventListener("click",newQuestion);$("#new-match").addEventListener("click",newMatchBoard);
+  $("#library-lesson").addEventListener("change", renderLibrary);
+  $("#library-refresh").addEventListener("click", loadSharedMaterials);
+  $("#upload-lesson").addEventListener("change", renderUploadTracks);
+  $("#admin-upload").addEventListener("submit", uploadSharedMaterial);
+  $("#admin-upload input[name='file']").addEventListener("change", (event) => {
+    const file = event.target.files[0]; if (!file) return;
+    const title = $("#admin-upload input[name='title']");
+    if (!title.value) title.value = file.name.replace(/\.[^.]+$/, "");
+    const id = file.name.replace(/\.[^.]+$/, "").toUpperCase();
+    if (knownTracks.has(id)) { $("#upload-lesson").value = String(tracks.find((track) => track.id === id).lesson); renderUploadTracks(); $("#upload-track").value = id; }
+  });
+  $("#sign-out").addEventListener("click", async () => { await fetch("/api/logout", { method: "POST" }); location.replace("/"); });
   window.addEventListener("resize",()=>{if(state.view==="write")resizeCanvas();});
   window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
   initDrawing();
 }
-function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;audio.volume=.75;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");loadPublicContent();}
+async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;audio.volume=.75;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();}
 init();

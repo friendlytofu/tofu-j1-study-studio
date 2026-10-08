@@ -1,147 +1,124 @@
-# Japanese Study Studio
+# Tofu Japanese Study Studio
 
-A static, independent study site for Japanese lessons 0–4. It has a compact control dock, day and night palettes, six interface languages, a full-screen view, listening and reading, kana and kanji writing practice, a vocabulary browser, audio dictation, and word matching. It does not have accounts, analytics, a database, or saved scores.
+An independent Japanese study companion for lessons 0–4, built for Cloudflare Pages. It has listening and reading, kana and kanji writing, lesson vocabulary, dictation, matching, and a private library for shared files. The interface supports English, Japanese, Chinese, Spanish, French, and German. It has day/night themes, full screen, a 0–100 volume slider, and no saved scores or learner accounts.
 
-This is an independent companion, not a Tobira product or an official reproduction of the book. The public package contains original practice readings and a curated starter selection of words. It does **not** contain the Tobira PDF, publisher audio, password, textbook passages, or complete textbook vocabulary lists. Anyone publishing additional material must make their own rights decision and verify every audio–text pairing.
+This project is unaffiliated with the Tobira publisher. The repository and ZIP do **not** contain the textbook PDF, publisher audio, textbook passages, a password, or anyone's personal notes. The included original readings and starter vocabulary are not a complete transcription of the book.
 
-## Publish the website: GitHub → Cloudflare Pages
+## The simple publishing path
 
-You can do this in your browser. You do not need a terminal, coding tools, or a paid domain. GitHub holds the site files; Cloudflare Pages turns them into a public website.
+The site is designed for this flow:
 
-### 1. Unzip and check the files
+**GitHub repository → Cloudflare Pages → password sign-in → private Cloudflare R2 files.**
 
-1. Unzip `japanese-study-studio.zip` on your computer.
-2. Open the extracted folder. You should see `README.md`, `LICENSE`, `.gitignore`, and a folder named `public`. Inside `public`, you should see `index.html`.
-3. Keep the Tobira PDF and MP3 files out of this folder. The public site lets you select your purchased MP3s privately after visiting it.
+GitHub contains the website code. Cloudflare Pages runs the password gate. R2 stores any lesson files you choose to share. The R2 bucket must stay private; readers can open files only through the signed-in website. A shared password limits access but cannot prove that someone purchased a book. Give the password only to people you intend to admit, and check your rights before sharing publisher material.
 
-**Upload the extracted files, not the ZIP itself.** The `public` folder must be at the top level of the GitHub repository. On a Mac, press **Shift + Command + .** in Finder if `.gitignore` is hidden.
+You can set up the production site entirely in the GitHub and Cloudflare dashboards. A paid domain is optional. R2 or Pages Functions may have usage charges beyond their free allowances; check Cloudflare's current pricing before uploading large files.
 
-### 2. Put the files on GitHub
+### 1. Put the site on GitHub
 
-1. Sign in to [GitHub](https://github.com/) and open [New repository](https://github.com/new).
-2. Name it `japanese-study-studio` (or another name you like). Choose **Public** or **Private**. Leave GitHub's **Add a README**, **Add .gitignore**, and **Choose a license** options unchecked; those files are already included. Click **Create repository**.
-3. In the empty repository, click **uploading an existing file**. If that link is not shown, use **Add file → Upload files**.
-4. Drag the **contents** of the extracted folder into GitHub: `README.md`, `LICENSE`, `.gitignore`, and the whole `public` folder. Do not drag the enclosing `japanese-study-studio` folder.
-5. In the file list, confirm that GitHub shows `public/index.html`. It should **not** show `japanese-study-studio/public/index.html`. Add a short commit message such as `Add Japanese study site`, then click **Commit changes**.
+If you already have the `friendlytofu/tofu-j1-study-studio` repository, open its local folder in GitHub Desktop, review the changed files, commit them, and click **Push origin**. Confirm GitHub shows the new `functions/_middleware.js` and `public/_routes.json`. You can also update files at the same paths using GitHub's **Add file → Upload files**. Then continue with step 2. Otherwise:
 
-GitHub's [file-upload guide](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository) shows the same upload screen. If you choose a private repository, the deployed Cloudflare website will still be public.
+1. Extract `tofu-j1-study-studio.zip`. Upload the **contents** of the extracted folder to a GitHub repository, including `public`, `functions`, `README.md`, `LICENSE`, `package.json`, and `.gitignore`.
+2. Confirm that GitHub shows `public/index.html`, `public/_routes.json`, and `functions/_middleware.js` at those exact paths. Do not upload the enclosing folder or just the ZIP.
+3. Keep passwords, PDF books, publisher MP3s, and private notes out of GitHub, even if you make the repository private. The site files are meant to be public code.
 
-### 3. Connect the repository to Cloudflare
+### 2. Connect GitHub to Cloudflare Pages
 
-1. Sign in to the [Cloudflare dashboard](https://dash.cloudflare.com/) and select your account.
-2. Open **Workers & Pages → Create application → Pages**. Choose **Connect to Git** or **Import an existing Git repository** (the wording can vary).
-3. Choose **GitHub**. If Cloudflare asks, authorize its GitHub app and give it access to the repository you just made.
-4. Select your repository and click **Begin setup**. Choose a project name; Cloudflare will use it for a `*.pages.dev` address.
-5. In **Set up builds and deployments**, enter these values:
+1. In the [Cloudflare dashboard](https://dash.cloudflare.com/), open **Workers & Pages → Create application → Pages → Connect to Git**. Connect GitHub and select your repository.
+2. Use these build settings:
 
    | Setting | Value |
    | --- | --- |
-   | Framework preset | **None** / **No framework** |
-   | Production branch | `main` (or the branch GitHub shows as your default) |
-   | Root directory | Leave blank / use the repository root |
+   | Framework preset | None / No framework |
+   | Production branch | `main` |
+   | Root directory | Repository root |
    | Build command | `exit 0` |
    | Build output directory | `public` |
-   | Environment variables | None |
 
-6. Click **Save and Deploy** or **Deploy site**. When the deployment says **Success**, open the `*.pages.dev` link Cloudflare gives you. Your website is now published.
+3. Deploy. The first visit should say the site setup is incomplete. That is expected: the gate **fails closed** until the secrets in step 3 are present.
 
-Cloudflare's [static HTML guide](https://developers.cloudflare.com/pages/framework-guides/deploy-anything/) confirms the `exit 0` command, and its [Git integration guide](https://developers.cloudflare.com/pages/get-started/git-integration/) explains the repository connection.
+The `functions` folder must be at the repository root, beside `public`. `public/_routes.json` sends every request through the password gate, including JavaScript, styles, and media requests. Do not remove or exclude routes from it.
 
-### 4. Publish later changes
+### 3. Add three Cloudflare secrets
 
-Edit or upload the changed files at the **same paths** in your GitHub repository and click **Commit changes**. Cloudflare Pages will automatically create a new deployment. You do not need to upload the ZIP to Cloudflare.
+In **Workers & Pages → your Pages project → Settings → Variables and Secrets**, add these names. Choose **Encrypt** for each value. Add them to the production environment. If you use preview deployments with real material, configure those separately too.
 
-If you see **404**, check that GitHub contains `public/index.html` and that Cloudflare's **Build output directory** is exactly `public`. If the repository is missing from Cloudflare's list, check the GitHub app's repository access. The numbered textbook tracks will show “audio not loaded” until a visitor adds their own MP3s; that is expected.
-
-## What is included
-
-| Section | Included behavior |
+| Secret name | What to enter |
 | --- | --- |
-| Listen & read | Five original Japanese readings with device-generated Japanese speech; a numbered catalog for 96 supplied lesson 0–4 track IDs; local MP3 import; a seek bar; start/end points; segment loop; optional verified transcript import. |
-| Writing | 46 basic hiragana, 46 basic katakana, and 31 kanji checked against the lesson 3–4 kanji slides. A dotted four-part practice square supports pointer or touch drawing. Stroke guides load from the credited open projects below. |
-| Vocabulary | Lesson-by-lesson starter selections with English meanings. The meanings stay in English when the interface language changes. A complete, verified word list can replace each starter list through `content.json`. |
-| Dictation | Japanese or English device speech, lesson selection, four answer choices, and written/hiragana/katakana answer modes. The Japanese voice reads the stored kana reading, so the spoken prompt and answer data share the same item. |
-| Matching | Five Japanese–English pairs per board, using selected lessons, with immediate feedback and no score history. |
+| `SITE_PASSWORD` | The reader password you want to share. Keep it in Cloudflare, never in GitHub or this README. |
+| `ADMIN_PASSWORD` | A different, strong password known only to you. This signs in as the owner and shows the upload form. |
+| `SESSION_SECRET` | A unique random string of at least 32 characters, used to sign 8-hour login cookies. Generate and keep it in a password manager. |
 
-The site supports English, Japanese, Chinese, Spanish, French, and German for its interface. Japanese study text remains Japanese. The vocabulary meanings remain English. The brief translations under the original readings follow the selected interface language; they are hidden in Japanese mode.
+The reader and admin passwords **must differ**. Cloudflare will return a setup error if a secret is absent, the two passwords match, or `SESSION_SECRET` is too short. To generate a suitable session secret on a computer with OpenSSL, run `openssl rand -hex 32`, then paste the result only into Cloudflare's encrypted secret field. Never commit it to GitHub.
 
-The top audio slider controls both imported recordings and device speech from 0 to 100. The theme and interface language are saved only as device preferences. Practice answers and scores are not saved.
+Save the secrets and **redeploy** the Pages project so its Functions receive the new settings. Try the `*.pages.dev` address in a private browser window: the sign-in screen should appear. A wrong password must leave you outside. Signing in with the owner password should later show the upload form.
 
-## Run it locally
+### 4. Add private storage for shared files
 
-1. Extract this archive.
-2. Open a terminal in the extracted folder.
-3. Run `python3 -m http.server 8000 --directory public`.
-4. Visit `http://localhost:8000` in a current browser.
+1. In Cloudflare, open **R2 Object Storage → Overview → Create bucket**. Give the bucket a unique name such as `tofu-j1-materials`.
+2. Keep the bucket **private**. Do not turn on its public development URL or connect a public custom domain.
+3. Return to **Workers & Pages → your Pages project → Settings → Bindings → Add binding → R2 bucket**. Set the **variable name** to exactly `MATERIALS` and select the bucket you created.
+4. Save and **redeploy** the Pages project again. The Library tab should now show an empty state instead of a storage setup error.
 
-Opening `index.html` directly as a `file://` page is not recommended because JavaScript modules and `content.json` need an HTTP origin.
+The bucket name can be anything; `MATERIALS` is the exact binding variable the code expects. Files uploaded through the site go to this bucket and do not appear in the GitHub repository or ZIP.
 
-No package installation, API key, build, or account is needed for local use. Device speech availability and voice quality depend on the visitor's browser and operating system.
+### 5. Sign in and upload
 
-## Use your MP3 files privately
+1. Open your Pages address. Enter your separate **admin** password.
+2. Open **Library → Add a shared file**.
+3. Choose a title, lesson 0–4, and a file. Supported formats are `.mp3`, `.pdf`, `.txt`, and `.md`, up to 50 MB per file.
+4. For an MP3, select its exact numbered track, such as `L04-01`. A file named `L04-01.mp3` fills in this choice for you. Check it before uploading. Audio then plays from **Listen & read**, with seeking and segment replay.
+5. For a `.txt` or `.md` transcript that matches a numbered recording, select the same track ID. It will display beside that track. Only choose a track after comparing the entire text with the audio. PDF and unnumbered text files remain available from the Library.
+6. Sign out. Sign in with the **reader** password in a separate browser session to check what readers can see. Readers cannot see the upload form or upload through the API.
 
-In **Listen & read**, select **Add MP3 files** and choose one or many files. Repeat for another folder. The browser accepts exact names such as `L00-01.mp3`, `L01-06.mp3`, and `L04-22.mp3`. It maps `L00-01.mp3` to the textbook's `L0-1` label. Only the file's number controls the mapping; the site does not infer its transcript from audio or from another track. The files remain in the current browser tab and need to be selected again after a reload.
+The owner controls are enforced by the Cloudflare Function, not just hidden in the browser. The R2 bucket stays private. Uploaded files are available to anyone who has the reader password, so only upload material you are allowed to share. Changing the reader password stops future sign-ins with the old password; to end existing 8-hour sessions immediately, also change `SESSION_SECRET` and redeploy.
 
-The supplied lesson 0–3 collection contained 14, 18, 28, and 14 numbered MP3 files; the lesson 4 collection contained 22. These IDs are cataloged, and the categories were checked against the [publisher's audio pages](https://tobirabeginning.9640.jp/contents1/audio/): greetings/kana, conversation, vocabulary recording, speaking activity, listening exercise, and language note. Some official listening exercises have smaller subtracks (for example, `L1-17-1`), while the supplied local set uses the top-level number. The site never claims a smaller subtrack is the whole recording.
+### 6. Publish later changes
 
-## Add reviewed content
+Edit the site files at the same paths in GitHub and commit them. Cloudflare automatically creates a new deployment. You do not upload the ZIP to Cloudflare. Shared files stay in R2 when the code is redeployed. To remove a shared file, delete its object from the R2 bucket in the Cloudflare dashboard, then click **Refresh** in the Library.
 
-`public/content.json` is deliberately empty. It accepts three optional maps:
+## Study content and accuracy
 
-```json
-{
-  "transcripts": {
-    "L01-01": {
-      "text": "…replace with text checked against L01-01.mp3…",
-      "bookPage": 32
-    }
-  },
-  "vocabulary": {
-    "1": [
-      {
-        "written": "日本語",
-        "reading": "にほんご",
-        "meaning": "Japanese language"
-      }
-    ]
-  },
-  "audio": {
-    "L01-01": "media/L01-01.mp3"
-  }
-}
-```
+- **Listen & read:** Five original Japanese readings use your device's Japanese voice. The site catalogs 96 lesson 0–4 textbook track IDs. A shared MP3 is connected to a track only through the exact ID selected by the owner. The player supports seeking and a start/end loop. Visitors can also select personal MP3s for their own browser session without sharing them.
+- **Writing:** 46 basic hiragana, 46 basic katakana, and 31 lesson 3–4 kanji with dotted four-part practice squares. The animated guides load from the credited open projects below. Drawing still works if a guide cannot load.
+- **Vocabulary:** A reviewed starter selection for each lesson. English meanings stay in English in every interface language. It is not the complete textbook vocabulary.
+- **Dictation and matching:** Lesson selection, Japanese or English device speech, written/kana answer choices, and immediate feedback. No answers or scores are saved.
 
-- `transcripts` are shown only for known lesson 0–4 IDs with nonempty Japanese text. Check both the track number and the full spoken text before adding an entry.
-- `vocabulary` replaces the starter list for the named lesson. Use lesson keys `"0"` through `"4"`. Every entry needs `written`, kana `reading`, and English `meaning`. Keep readings exact; dictation speaks the `reading` field.
-- `audio` is for files you are entitled to serve publicly. Paths must be relative `media/*.mp3` paths. Put those files in `public/media/` only if distribution is permitted, then explicitly adjust `.gitignore` for that deliberate publication. Never include a publisher password or private token in a public file.
+The textbook PDF previously available during development consisted of scanned pages, so full text extraction and exact audio-to-text matching could not be verified. The project deliberately leaves unknown transcripts blank. Do not infer a transcript from a filename or nearby textbook page. The optional `public/content.json` supports *original or distributable reviewed material* but is empty by default; putting protected textbook text or paths to media in that public file would publish them on GitHub. For private shared texts, use the owner upload form instead.
 
-The **Add content JSON** button can also load a checked JSON file for one browser session. This is useful for private textbook notes without publishing them. A checked transcript and its MP3 can therefore be used locally while the GitHub repository and public Cloudflare site remain free of protected media.
+The official [Tobira audio page](https://tobirabeginning.9640.jp/contents1/audio/) describes access for purchasers. Access does not itself establish permission to redistribute recordings, PDFs, or passages to every holder of a shared password. Review your license or ask the publisher before uploading those files to R2. The software's MIT license covers this site's original code; it does not relicense third-party textbook content.
 
-## Content and rights
+Stroke guides are fetched when used from [KanjiVG](https://github.com/KanjiVG/kanjivg) for kanji and [strokesvg](https://github.com/zhengkyl/strokesvg) for kana. Those projects have their own licenses. Their SVG files are not included here.
 
-The Tobira textbook and publisher recordings are copyrighted. The [official Tobira audio page](https://tobirabeginning.9640.jp/contents1/audio/) describes its materials as available to purchasers. Having access to them does not itself grant permission to publish the files, transcriptions, or full vocabulary tables to a public repository or site. Keep those files out of a public deployment unless you have the needed rights. The local file picker is the intended study path for purchased audio.
+## Local testing (optional)
 
-The original readings in `public/data.js` were written for this project. The default vocabulary is a short, manually reviewed starter selection rather than a complete extraction. The textbook PDF available during development was scanned images, so bulk text extraction could not be verified. Missing textbook transcript text is shown plainly instead of being guessed or attached to the wrong recording.
+The password gate needs Cloudflare Pages Functions. Opening `public/index.html` directly or serving only `public` with a basic static server **does not test or enforce access protection**.
 
-Stroke drawings are fetched at viewing time from [KanjiVG](https://github.com/KanjiVG/kanjivg) for kanji and [strokesvg](https://github.com/zhengkyl/strokesvg) for kana. KanjiVG states its graphics are under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); strokesvg states its glyph work is based on [Klee One](https://github.com/fontworks-fonts/Klee) under the SIL Open Font License. The graphics are not bundled in this archive. Internet access is required for the animated stroke guides; the tracing square remains usable without it. Review those projects' licenses if you choose to bundle or alter their assets.
-
-The site code itself is MIT licensed; see `LICENSE`.
+If you use [Wrangler](https://developers.cloudflare.com/pages/functions/local-development/), create an untracked `.dev.vars` file in the project root with the same three secret names and local test values. It is ignored by Git. Run `wrangler pages dev public --r2=MATERIALS` from the project root, then open the local address Wrangler prints. Do not use production passwords in `.dev.vars`; this is only a local test. `npm test` runs the included access-control checks without needing Cloudflare credentials.
 
 ## File map
 
 ```text
-README.md             Setup, content format, rights and limitations
-LICENSE               License for this site's original code
-.gitignore             Prevents accidental inclusion of private material
-public/index.html      Site structure
-public/styles.css      Day/night design and responsive layout
-public/app.js          Playback, practice, import and UI behavior
-public/data.js         Original readings, starter words, characters and track IDs
-public/i18n.js         Six interface-language dictionaries
-public/content.json    Optional reviewed-content map (empty by default)
-public/favicon.svg     Site icon
+README.md                 Setup and content guidance
+LICENSE                   MIT terms; Tofu copyright
+package.json              No-dependency local test command
+functions/_middleware.js  Password gate, signed sessions, owner upload and private file access
+public/_routes.json       Sends every request through the gate
+public/index.html          Site structure and owner upload form
+public/styles.css          Day/night and responsive design
+public/app.js              Player, practice, library, upload and controls
+public/data.js             Original readings, starter words, characters and track IDs
+public/i18n.js             Six interface-language dictionaries
+public/content.json        Empty optional public content map
+public/favicon.svg         Site icon
 ```
 
-## Quick quality check before each public update
+## If something does not work
 
-Open the deployed site on a narrow phone and a desktop. Check each navigation tab, all six languages, day/night, full screen, the 0–100 volume control, a local MP3 on lesson 4, seeking and segment replay, kana/kanji stroke loading, a drawing gesture, dictation in both audio modes, and matching. Check every `content.json` transcript against its exact MP3 before publishing it. Confirm that no password, PDF, private note, or unlicensed media has been added to `public/`.
+- **Setup message instead of sign-in:** Check the three encrypted secret names, their values, and that you redeployed after saving them. The admin and reader passwords must be different.
+- **Library says storage is unavailable:** Check the R2 binding name `MATERIALS`, confirm it points to your private bucket, then redeploy.
+- **Audio is not beside a track:** Confirm the uploaded MP3 has the exact `L00-01`–`L04-22` style ID and the right lesson. Unnumbered PDFs and texts remain in Library.
+- **Wrong language, theme, or voice:** Language and theme are device preferences. Device-generated speech depends on the browser and installed voices.
+- **Site shows 404:** Confirm GitHub has `public/index.html`, the build output is `public`, and `functions/_middleware.js` is beside `public` at the repository root.
+
+Official setup references: [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/get-started/), [routing](https://developers.cloudflare.com/pages/functions/routing/), [bindings and secrets](https://developers.cloudflare.com/pages/functions/bindings/), [R2 buckets](https://developers.cloudflare.com/r2/buckets/create-buckets/), and [Pages Git integration](https://developers.cloudflare.com/pages/get-started/git-integration/).
