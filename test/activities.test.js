@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import { sentencePuzzles, dialogueScenes } from "../public/activities.js";
 import { messages, t } from "../public/i18n.js";
 
-test("sentence prompts cover lessons 0–4 with complete model sentences", () => {
+test("sentence builder has at least 18 distinct prompts per lesson", () => {
   assert.deepEqual([...new Set(sentencePuzzles.map(({ lesson }) => lesson))], [0, 1, 2, 3, 4]);
+  for (let lesson = 0; lesson <= 4; lesson++) assert.ok(sentencePuzzles.filter((item) => item.lesson === lesson).length >= 18);
   assert.equal(new Set(sentencePuzzles.map(({ id }) => id)).size, sentencePuzzles.length);
+  assert.equal(new Set(sentencePuzzles.map(({ target }) => target)).size, sentencePuzzles.length);
   for (const puzzle of sentencePuzzles) {
     assert.ok(puzzle.cue && puzzle.tiles.length >= 2 && puzzle.anchors.length);
     assert.equal(puzzle.target, puzzle.tiles.join(""));
@@ -13,18 +15,15 @@ test("sentence prompts cover lessons 0–4 with complete model sentences", () =>
   }
 });
 
-test("every lesson has a complete two-choice conversation path", () => {
-  assert.deepEqual(dialogueScenes.map(({ lesson }) => lesson), [0, 1, 2, 3, 4]);
+test("every lesson has ten accessible two-choice conversation scenes", () => {
+  for (let lesson = 0; lesson <= 4; lesson++) assert.equal(dialogueScenes.filter((item) => item.lesson === lesson).length, 10);
   for (const scene of dialogueScenes) {
-    assert.ok(scene.opening && scene.titleKey);
+    assert.ok(scene.opening && scene.title);
     assert.equal(scene.branches.length, 2);
     for (const branch of scene.branches) {
       assert.ok(branch.reply && branch.npc);
       assert.equal(branch.followups.length, 2);
       for (const ending of branch.followups) assert.ok(ending.reply && ending.npc);
-    }
-    for (const language of ["en", "ja", "zh", "ko", "es", "fr", "de"]) {
-      assert.notEqual(t(language, scene.titleKey), scene.titleKey);
     }
   }
 });

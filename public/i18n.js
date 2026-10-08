@@ -101,4 +101,15 @@ const accessibilityLabels = {
 };
 for (const [language, labels] of Object.entries(accessibilityLabels)) Object.assign(messages[language], labels);
 
+const practiceLabels = {
+  en:{voiceLabel:"Japanese voice",voiceAuto:"Auto",voicePreview:"Preview Japanese voice",japaneseVoiceUnavailable:"No Japanese voice is installed in this browser. Add a Japanese system voice to hear practice speech.",tourVoice:"Choose a Japanese device voice and press play to preview it. Practice speech uses this voice; textbook recordings stay as recorded.",dialogueScene:"Scene",dialogueNext:"Next scene →"},
+  ja:{voiceLabel:"日本語の音声",voiceAuto:"自動",voicePreview:"日本語音声を試聴",japaneseVoiceUnavailable:"このブラウザーに日本語の音声がありません。端末に日本語の音声を追加してください。",tourVoice:"端末の日本語音声を選び、再生ボタンで試聴できます。練習の読み上げに使い、教材の録音には影響しません。",dialogueScene:"場面",dialogueNext:"次の場面 →"},
+  zh:{voiceLabel:"日语语音",voiceAuto:"自动",voicePreview:"试听日语语音",japaneseVoiceUnavailable:"此浏览器没有日语语音。请在设备上安装日语语音。",tourVoice:"选择设备上的日语语音并试听。练习朗读会使用该语音，教材录音保持原样。",dialogueScene:"场景",dialogueNext:"下一个场景 →"},
+  ko:{voiceLabel:"일본어 음성",voiceAuto:"자동",voicePreview:"일본어 음성 미리 듣기",japaneseVoiceUnavailable:"이 브라우저에 일본어 음성이 없습니다. 기기에 일본어 음성을 추가하세요.",tourVoice:"기기의 일본어 음성을 선택하고 재생 버튼으로 들어 보세요. 연습 음성에만 적용되며 교재 녹음은 그대로 유지됩니다.",dialogueScene:"장면",dialogueNext:"다음 장면 →"},
+  es:{voiceLabel:"Voz japonesa",voiceAuto:"Automática",voicePreview:"Probar voz japonesa",japaneseVoiceUnavailable:"Este navegador no tiene una voz japonesa. Instala una voz japonesa en el dispositivo.",tourVoice:"Elige una voz japonesa del dispositivo y escúchala. Se usa en las prácticas; las grabaciones del libro no cambian.",dialogueScene:"Escena",dialogueNext:"Escena siguiente →"},
+  fr:{voiceLabel:"Voix japonaise",voiceAuto:"Auto",voicePreview:"Écouter la voix japonaise",japaneseVoiceUnavailable:"Ce navigateur ne dispose pas de voix japonaise. Ajoutez-en une sur votre appareil.",tourVoice:"Choisissez une voix japonaise de l’appareil et écoutez un exemple. Elle sert aux exercices; les enregistrements du manuel ne changent pas.",dialogueScene:"Scène",dialogueNext:"Scène suivante →"},
+  de:{voiceLabel:"Japanische Stimme",voiceAuto:"Automatisch",voicePreview:"Japanische Stimme testen",japaneseVoiceUnavailable:"In diesem Browser ist keine japanische Stimme verfügbar. Installiere eine auf deinem Gerät.",tourVoice:"Wähle eine japanische Stimme des Geräts und höre sie probeweise. Sie gilt für Übungen; Lehrbuchaufnahmen bleiben unverändert.",dialogueScene:"Szene",dialogueNext:"Nächste Szene →"}
+};
+for (const [language, labels] of Object.entries(practiceLabels)) Object.assign(messages[language], labels);
+
 export const t = (language, key) => messages[language]?.[key] ?? messages.en[key] ?? key;

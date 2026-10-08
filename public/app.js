@@ -3,6 +3,7 @@ import { t } from "./i18n.js";
 import { buildChasePool, initialChase, ninjaPace, advanceChase } from "./chase.js";
 import { ChaseAudio } from "./chase-audio.js";
 import { sentencePuzzles, dialogueScenes } from "./activities.js";
+import { japaneseVoices, chooseJapaneseVoice, voiceKey } from "./voices.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -21,11 +22,11 @@ let strokeRequest = 0;
 const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, pool: [], word: null, prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "", showHint: true, musicEnabled: true };
 const chaseAudio = new ChaseAudio();
 const builder = { lesson:0, index:0, order:[], selected:[], revealed:false, feedback:"" };
-const dialogue = { lesson:0, branch:null, followup:null };
+const dialogue = { lesson:0, index:0, branch:null, followup:null };
 const volumeValues = [0, .2, .5, 1];
 let clickContext;
 const tourSteps = [
-  { target:"#volume-levels", key:"tourSound" }, { target:"#theme-toggle", key:"tourTheme" },
+  { target:"#volume-levels", key:"tourSound" }, { target:"#ja-voice", key:"tourVoice" }, { target:"#theme-toggle", key:"tourTheme" },
   { target:"#language", key:"tourLanguage" }, { target:"#fullscreen-toggle", key:"tourFullscreen" },
   { target:'.nav-tab[data-view="read"]', key:"tourRead", view:"read" },
   { target:'.nav-tab[data-view="write"]', key:"tourWrite", view:"write" },
@@ -142,6 +143,10 @@ function applyLanguage() {
   $("#tour-open").setAttribute("aria-label", translate("tourOpen"));
   $("#tour-open").title = translate("tourOpen");
   $("#volume-levels").setAttribute("aria-label", translate("soundLevel"));
+  $("#ja-voice").setAttribute("aria-label", translate("voiceLabel"));
+  $("#voice-preview").setAttribute("aria-label", translate("voicePreview"));
+  $("#voice-preview").title = translate("voicePreview");
+  renderVoiceOptions();
   $(".footer-corner a").setAttribute("aria-label", translate("githubProfile"));
   if (tourIndex >= 0) showTourStep(tourIndex);
   renderLessonPills(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
@@ -261,12 +266,25 @@ async function loadPublicContent() {
     mergeContent(parsed); selectTrack(state.track); renderVocab(); newQuestion(false); newMatchBoard();
   } catch { /* A missing optional content pack leaves the study tools usable. */ }
 }
+function renderVoiceOptions() {
+  const select = $("#ja-voice");
+  const preference = safeGet("jss-ja-voice") || "";
+  select.replaceChildren(new Option(translate("voiceAuto"), ""));
+  if (!("speechSynthesis" in window)) return;
+  for (const voice of japaneseVoices(speechSynthesis.getVoices())) {
+    select.add(new Option(voice.name, voiceKey(voice)));
+  }
+  select.value = [...select.options].some((option) => option.value === preference) ? preference : "";
+}
 function speech(text, lang) {
   if (!("speechSynthesis" in window)) { toast(translate("noVoice")); return; }
+  const voices = speechSynthesis.getVoices();
+  const isJapanese = lang.toLowerCase().startsWith("ja");
+  const voice = isJapanese ? chooseJapaneseVoice(voices, safeGet("jss-ja-voice") || "") : voices.find((candidate) => /^en(?:-|$)/i.test(candidate.lang));
+  if (!voice) { toast(translate(isJapanese ? "japaneseVoiceUnavailable" : "audioUnavailable")); renderVoiceOptions(); return; }
   speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = lang;
-  utterance.rate = lang === "ja-JP" ? .84 : .93; utterance.volume = volumeValues[state.volume];
-  const voice = speechSynthesis.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(lang.slice(0,2).toLowerCase()));
-  if (voice) utterance.voice = voice;
+  utterance.rate = isJapanese ? .96 : .93; utterance.volume = volumeValues[state.volume];
+  utterance.voice = voice;
   speechSynthesis.speak(utterance);
 }
 function toKatakana(text) { return [...text].map((char) => { const n = char.codePointAt(0); return n >= 0x3041 && n <= 0x3096 ? String.fromCodePoint(n + 0x60) : char; }).join(""); }
@@ -465,12 +483,13 @@ function renderDialogue() {
     const button = document.createElement("button"); button.type = "button"; button.textContent = lessonLabel(lesson);
     button.classList.toggle("active", dialogue.lesson === lesson);
     button.setAttribute("aria-pressed", String(dialogue.lesson === lesson));
-    button.addEventListener("click", () => { dialogue.lesson = lesson; dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
+    button.addEventListener("click", () => { dialogue.lesson = lesson; dialogue.index = 0; dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
     lessonButtons.append(button);
   }
-  const scene = dialogueScenes.find((item) => item.lesson === dialogue.lesson);
-  $("#dialogue-scene-title").textContent = translate(scene.titleKey);
-  $("#dialogue-progress").textContent = `${lessonLabel(scene.lesson)} · ${dialogue.followup !== null ? "2 / 2" : dialogue.branch !== null ? "1 / 2" : "0 / 2"}`;
+  const scenes = dialogueScenes.filter((item) => item.lesson === dialogue.lesson);
+  const scene = scenes[dialogue.index % scenes.length];
+  $("#dialogue-scene-title").textContent = scene.title;
+  $("#dialogue-progress").textContent = `${lessonLabel(scene.lesson)} · ${translate("dialogueScene")} ${dialogue.index + 1} / ${scenes.length}`;
   const transcript = $("#dialogue-transcript"); transcript.replaceChildren();
   const bubble = (speaker, line) => {
     const row = document.createElement("div"); row.className = `dialogue-bubble ${speaker}`;
@@ -795,6 +814,10 @@ function bindEvents(){
   $("#builder-next").addEventListener("click", () => { builder.index = (builder.index + 1) % lessonPuzzles().length; resetBuilder(); });
   $("#builder-listen").addEventListener("click", () => speech(currentPuzzle().target, "ja-JP"));
   $("#dialogue-restart").addEventListener("click", () => { dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
+  $("#dialogue-next").addEventListener("click", () => { dialogue.index = (dialogue.index + 1) % dialogueScenes.filter(({lesson}) => lesson === dialogue.lesson).length; dialogue.branch = null; dialogue.followup = null; renderDialogue(); });
+  $("#ja-voice").addEventListener("change", (event) => safeSet("jss-ja-voice", event.target.value));
+  $("#voice-preview").addEventListener("click", () => speech("こんにちは。よろしくお願いします。", "ja-JP"));
+  if ("speechSynthesis" in window) speechSynthesis.addEventListener("voiceschanged", renderVoiceOptions);
   $$("#chase-levels button").forEach((button) => button.addEventListener("click", () => { if (chase.active) return; chase.level = button.dataset.level; renderChase(); }));
   $("#chase-hint-toggle").addEventListener("click", () => { chase.showHint = !chase.showHint; renderChase(); });
   $("#chase-music-toggle").addEventListener("click", () => { chase.musicEnabled = !chase.musicEnabled; if (chase.active && chase.musicEnabled) chaseAudio.start(); else chaseAudio.stop(); renderChase(); });
