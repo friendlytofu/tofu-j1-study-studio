@@ -1,12 +1,12 @@
 import { trackCounts, tracks, readings, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
 import { t } from "./i18n.js";
-import { chaseWords, initialChase, ninjaPace, advanceChase } from "./chase.js";
+import { buildChasePool, initialChase, ninjaPace, advanceChase } from "./chase.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const knownTracks = new Set(tracks.map(({ id }) => id));
 const state = {
-  language: safeGet("jss-language") || "en", theme: safeGet("jss-theme") || "day", volume: 75,
+  language: safeGet("jss-language") || "en", theme: safeGet("jss-theme") || "day", volume: Math.min(3, Math.max(0, Number(safeGet("jss-volume-level") ?? 2) || 0)),
   view: "read", readLesson: 0, vocabLesson: 0, script: "hiragana", character: "あ",
   track: "L00-01", audioFiles: new Map(), transcripts: {}, publicAudio: {}, segmentA: null, segmentB: null,
   dictLessons: new Set([0]), matchLessons: new Set([0]), promptMode: "ja", answerScript: "written", question: null, answered: false,
@@ -16,11 +16,85 @@ const state = {
 const audio = $("#track-audio");
 let toastTimer;
 let strokeRequest = 0;
-const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, word: chaseWords[0], prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "" };
+const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, pool: [], word: null, prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "" };
+const volumeValues = [0, .2, .5, 1];
+let clickContext;
+const tourSteps = [
+  { target:"#volume-levels", key:"tourSound" }, { target:"#theme-toggle", key:"tourTheme" },
+  { target:"#language", key:"tourLanguage" }, { target:"#fullscreen-toggle", key:"tourFullscreen" },
+  { target:'.nav-tab[data-view="read"]', key:"tourRead", view:"read" },
+  { target:'.nav-tab[data-view="write"]', key:"tourWrite", view:"write" },
+  { target:'.nav-tab[data-view="vocab"]', key:"tourVocab", view:"vocab" },
+  { target:'.nav-tab[data-view="dictation"]', key:"tourDictation", view:"dictation" },
+  { target:'.nav-tab[data-view="match"]', key:"tourMatch", view:"match" },
+  { target:'.nav-tab[data-view="chase"]', key:"tourChase", view:"chase" },
+  { target:'.nav-tab[data-view="library"]', key:"tourLibrary", view:"library" }
+];
+let tourIndex = -1;
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function safeSet(key, value) { try { localStorage.setItem(key, value); } catch { /* session-only */ } }
 function translate(key) { return t(state.language, key); }
+function setVolume(level) {
+  state.volume = level;
+  safeSet("jss-volume-level", String(level));
+  audio.volume = volumeValues[level];
+  $$("#volume-levels button").forEach((button) => {
+    const active = Number(button.dataset.volume) === level;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+    button.setAttribute("aria-label", translate(["soundMute","soundLow","soundMedium","soundHigh"][Number(button.dataset.volume)]));
+    button.title = button.getAttribute("aria-label");
+  });
+}
+function clickSound() {
+  if (!state.volume) return;
+  try {
+    clickContext ||= new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = clickContext.createOscillator();
+    const gain = clickContext.createGain();
+    const now = clickContext.currentTime;
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(720, now);
+    oscillator.frequency.exponentialRampToValueAtTime(480, now + .035);
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(.018 * volumeValues[state.volume], now + .005);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + .045);
+    oscillator.connect(gain).connect(clickContext.destination);
+    oscillator.start(now); oscillator.stop(now + .05);
+  } catch { /* Audio feedback is optional when unavailable. */ }
+}
+function placeTourSpotlight() {
+  if (tourIndex < 0) return;
+  const target = $(tourSteps[tourIndex].target);
+  const rect = target.getBoundingClientRect();
+  const spot = $("#tour-spotlight");
+  Object.assign(spot.style, {left:`${Math.max(0,rect.left-7)}px`,top:`${Math.max(0,rect.top-7)}px`,width:`${rect.width+14}px`,height:`${rect.height+14}px`});
+}
+function showTourStep(index) {
+  tourIndex = index;
+  const step = tourSteps[index];
+  if (step.view) showView(step.view);
+  const target = $(step.target);
+  target.scrollIntoView({block:"center",inline:"nearest",behavior:"instant"});
+  $("#tour-count").textContent = `${index+1} / ${tourSteps.length}`;
+  $("#tour-title").textContent = translate("tourTitle");
+  $("#tour-body").textContent = translate(step.key);
+  $("#tour-back").hidden = index === 0;
+  $("#tour-next").textContent = translate(index === tourSteps.length-1 ? "tourFinish" : "tourNext");
+  requestAnimationFrame(placeTourSpotlight);
+  $("#tour-next").focus();
+}
+function endTour() {
+  tourIndex = -1;
+  $("#tour-layer").hidden = true;
+  safeSet("jss-tour-seen-v1", "yes");
+  $("#tour-open").focus();
+}
+function startTour() {
+  $("#tour-layer").hidden = false;
+  showTourStep(0);
+}
 function lessonLabel(index) {
   if (state.language === "ja") return `第${index}課`;
   if (state.language === "zh") return `第${index}课`;
@@ -53,6 +127,10 @@ function applyLanguage() {
   $("#fullscreen-toggle").title = document.fullscreenElement ? translate("exitFullscreen") : translate("fullscreen");
   $("#track-play").setAttribute("aria-label", translate("trackPlay"));
   $("#dict-replay").setAttribute("aria-label", translate("replay"));
+  setVolume(state.volume);
+  $("#tour-open").setAttribute("aria-label", translate("tourOpen"));
+  $("#tour-open").title = translate("tourOpen");
+  if (tourIndex >= 0) showTourStep(tourIndex);
   renderLessonPills(); renderReading(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
   renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderChase(); renderUploadTracks(); renderLibrary();
 }
@@ -180,7 +258,7 @@ async function loadPublicContent() {
 function speech(text, lang) {
   if (!("speechSynthesis" in window)) { toast(translate("noVoice")); return; }
   speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = lang;
-  utterance.rate = lang === "ja-JP" ? .84 : .93; utterance.volume = state.volume / 100;
+  utterance.rate = lang === "ja-JP" ? .84 : .93; utterance.volume = volumeValues[state.volume];
   const voice = speechSynthesis.getVoices().find((candidate) => candidate.lang.toLowerCase().startsWith(lang.slice(0,2).toLowerCase()));
   if (voice) utterance.voice = voice;
   speechSynthesis.speak(utterance);
@@ -327,8 +405,11 @@ function renderChase() {
   $("#chase-ninja").style.left = `${chase.ninja}%`;
   $("#chase-thief").style.left = `${chase.thief}%`;
   $("#chase-pace").textContent = `${translate("chasePace")}: ${ninjaPace(chase.strokes, performance.now()).toFixed(1)}`;
-  $("#chase-correct").textContent = chase.prefix;
-  $("#chase-remaining").textContent = chase.word.slice(chase.prefix.length);
+  $("#chase-word").textContent = chase.word?.written || "—";
+  $("#chase-reading").textContent = chase.word?.hiragana || "";
+  $("#chase-meaning").textContent = chase.word ? `${lessonLabel(chase.word.lesson)} · ${chase.word.meaning}` : "";
+  $("#chase-romaji").textContent = chase.word?.romaji[0] || "";
+  $("#chase-typed").textContent = chase.prefix || "—";
   $("#chase-input").disabled = !chase.active;
   $("#chase-start").textContent = translate(chase.active || chase.finished ? "chaseRestart" : "chaseStart");
   for (const button of $$("#chase-levels button")) {
@@ -363,11 +444,13 @@ function tickChase(now) {
 }
 function startChase() {
   cancelAnimationFrame(chase.frame);
+  chase.pool = buildChasePool(vocab);
+  if (!chase.pool.length) { toast(translate("chaseNoWords")); return; }
   chase.active = true;
   chase.finished = false;
   chase.ninja = initialChase.ninja;
   chase.thief = initialChase.thief;
-  chase.word = chaseWords[Math.floor(Math.random() * chaseWords.length)];
+  chase.word = chase.pool[Math.floor(Math.random() * chase.pool.length)];
   chase.prefix = "";
   chase.furthest = 0;
   chase.strokes = [];
@@ -383,8 +466,10 @@ function startChase() {
 function handleChaseInput(event) {
   if (!chase.active || event?.isComposing) return;
   const input = $("#chase-input");
-  const value = input.value.normalize("NFC");
-  if (!/^[\u3040-\u309f]*$/u.test(value) || !chase.word.startsWith(value)) {
+  const value = input.value.normalize("NFKC").toLowerCase();
+  input.value = value;
+  $("#chase-typed").textContent = value || "—";
+  if (!/^[a-z]*$/.test(value) || !chase.word.romaji.some((variant) => variant.startsWith(value))) {
     input.classList.add("invalid");
     $("#chase-feedback").textContent = translate("chaseMistake");
     return;
@@ -397,12 +482,14 @@ function handleChaseInput(event) {
     chase.furthest = value.length;
   }
   chase.prefix = value;
-  if (value === chase.word) {
-    const choices = chaseWords.filter((word) => word !== chase.word);
+  if (chase.word.romaji.includes(value)) {
+    const choices = chase.pool.filter((word) => word !== chase.word);
+    if (!choices.length) { stopChase("chaseNoWords"); return; }
     chase.word = choices[Math.floor(Math.random() * choices.length)];
     chase.prefix = "";
     chase.furthest = 0;
     input.value = "";
+    $("#chase-typed").textContent = "—";
   }
   renderChase();
 }
@@ -549,7 +636,25 @@ async function uploadNumberedAudio(event) {
 
 function bindEvents(){
   $$(".nav-tab").forEach((button)=>button.addEventListener("click",()=>showView(button.dataset.view)));
-  $("#volume").addEventListener("input",(event)=>{state.volume=Number(event.target.value);$("#volume-value").textContent=state.volume;audio.volume=state.volume/100;});
+  $$("#volume-levels button").forEach((button) => button.addEventListener("click", () => setVolume(Number(button.dataset.volume))));
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("button, a, select, input[type=checkbox]")) clickSound();
+  });
+  $("#tour-open").addEventListener("click", startTour);
+  $("#tour-skip").addEventListener("click", endTour);
+  $("#tour-back").addEventListener("click", () => showTourStep(Math.max(0, tourIndex - 1)));
+  $("#tour-next").addEventListener("click", () => tourIndex === tourSteps.length - 1 ? endTour() : showTourStep(tourIndex + 1));
+  document.addEventListener("keydown", (event) => {
+    if (tourIndex < 0) return;
+    if (event.key === "Escape") { endTour(); return; }
+    if (event.key !== "Tab") return;
+    const controls = $$("#tour-layer button:not([hidden])");
+    const first = controls[0], last = controls.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  });
+  window.addEventListener("scroll", placeTourSpotlight, {passive:true});
+  window.addEventListener("resize", placeTourSpotlight);
   $("#theme-toggle").addEventListener("click",()=>setTheme(state.theme==="day"?"night":"day"));
   $("#language").addEventListener("change",(event)=>{state.language=event.target.value;safeSet("jss-language",state.language);applyLanguage();});
   $("#fullscreen-toggle").addEventListener("click",async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{toast(translate("fullscreen"));}});
@@ -596,5 +701,5 @@ function bindEvents(){
   window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
   initDrawing();
 }
-async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;audio.volume=.75;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();}
+async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v1"))startTour();}
 init();

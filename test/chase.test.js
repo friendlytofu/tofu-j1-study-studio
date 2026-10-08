@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chaseWords, thiefSpeeds, initialChase, ninjaPace, advanceChase } from '../public/chase.js';
+import { buildChasePool, romanizations, thiefSpeeds, initialChase, ninjaPace, advanceChase } from '../public/chase.js';
 
-test('hiragana prompts are distinct and contain no romaji or katakana', () => {
-  assert.equal(new Set(chaseWords).size, chaseWords.length);
-  assert.ok(chaseWords.every((word) => /^[\u3040-\u309f]+$/u.test(word)));
+test('romaji typing accepts common spellings and katakana readings', () => {
+  assert.ok(romanizations('わたし').includes('watashi'));
+  assert.ok(romanizations('わたし').includes('watasi'));
+  assert.ok(romanizations('シチュー').includes('shichuu'));
+  assert.ok(romanizations('がっこう').includes('gakkou'));
+  assert.deepEqual(romanizations('日本語'), []);
+});
+
+test('typing prompts come only from playable lesson vocabulary', () => {
+  const bank = {
+    0:[{written:'私',reading:'わたし',meaning:'I'},{written:'重複',reading:'わたし',meaning:'duplicate'}],
+    1:[{written:'コーヒー',reading:'コーヒー',meaning:'coffee'},{written:'skip',reading:'すきっぷ',meaning:'skip',practice:false}],
+    5:[{written:'遠い',reading:'とおい',meaning:'far'}]
+  };
+  const pool = buildChasePool(bank);
+  assert.deepEqual(pool.map((item) => item.written), ['私','コーヒー']);
+  assert.equal(pool[0].romaji[0], 'watashi');
+  assert.equal(pool[1].lesson, 1);
 });
 
 test('recent correct characters set ninja pace; old characters stop helping', () => {
