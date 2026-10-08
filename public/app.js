@@ -1,5 +1,6 @@
 import { trackCounts, tracks, readings, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
 import { t } from "./i18n.js";
+import { chaseWords, initialChase, ninjaPace, advanceChase } from "./chase.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -15,6 +16,7 @@ const state = {
 const audio = $("#track-audio");
 let toastTimer;
 let strokeRequest = 0;
+const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, word: chaseWords[0], prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "" };
 
 function safeGet(key) { try { return localStorage.getItem(key); } catch { return null; } }
 function safeSet(key, value) { try { localStorage.setItem(key, value); } catch { /* session-only */ } }
@@ -52,10 +54,11 @@ function applyLanguage() {
   $("#track-play").setAttribute("aria-label", translate("trackPlay"));
   $("#dict-replay").setAttribute("aria-label", translate("replay"));
   renderLessonPills(); renderReading(); renderTrackList(); renderPlayer(); renderCharacterGrid(); renderVocab();
-  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderUploadTracks(); renderLibrary();
+  renderLessonChecks(); renderQuestion(false); renderMatchBoard(false); renderChase(); renderUploadTracks(); renderLibrary();
 }
 function showView(view) {
-  if (!["read","write","vocab","dictation","match","library"].includes(view)) return;
+  if (!["read","write","vocab","dictation","match","chase","library"].includes(view)) return;
+  if (state.view === "chase" && view !== "chase" && chase.active) stopChase("chasePaused");
   state.view = view;
   $$(".nav-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $(`.nav-tab[data-view="${view}"]`).scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -156,7 +159,7 @@ function mergeContent(parsed) {
   if (parsed.vocabulary && typeof parsed.vocabulary === "object") {
     for (let lesson = 0; lesson <= 4; lesson++) {
       const incoming = parsed.vocabulary[String(lesson)]; if (!Array.isArray(incoming)) continue;
-      const clean = incoming.filter((item) => [item?.written,item?.reading,item?.meaning].every((part) => typeof part === "string" && part.trim())).map((item, index) => ({ id:`${lesson}-${index}`, lesson, written:item.written.trim(), reading:item.reading.trim(), meaning:item.meaning.trim() }));
+      const clean = incoming.filter((item) => [item?.written,item?.reading,item?.meaning].every((part) => typeof part === "string" && part.trim())).map((item, index) => ({ id:`${lesson}-${index}`, lesson, written:item.written.trim(), reading:item.reading.trim(), meaning:item.meaning.trim(), practice:item.practice !== false }));
       if (clean.length) { vocab[lesson] = clean; count += clean.length; }
     }
   }
@@ -275,7 +278,7 @@ function renderLessonChecks() {
   }
 }
 function selectedWords(lessons) {
-  const keys = new Set(); return [...lessons].flatMap((lesson)=>vocab[lesson]).filter((item)=>{const key=`${item.reading}|${item.meaning}`;if(keys.has(key))return false;keys.add(key);return true;});
+  const keys = new Set(); return [...lessons].flatMap((lesson)=>vocab[lesson]).filter((item)=>{if (item.practice === false) return false; const key=`${item.reading}|${item.meaning}`;if(keys.has(key))return false;keys.add(key);return true;});
 }
 function newQuestion(play = true) {
   const pool = selectedWords(state.dictLessons); state.answered=false;
@@ -316,6 +319,94 @@ function renderMatchBoard(clearFeedback) {
 let matchOrder=[];
 function shuffleStable(items){const ids=items.map(({id})=>id).sort().join("|");if(matchOrder.key!==ids){matchOrder=shuffle(items);matchOrder.key=ids;}return matchOrder;}
 
+function renderChase() {
+  const scene = $("#chase-scene");
+  scene.dataset.running = String(chase.active);
+  scene.dataset.outcome = chase.outcome;
+  scene.setAttribute("aria-label", translate("chaseSceneLabel"));
+  $("#chase-ninja").style.left = `${chase.ninja}%`;
+  $("#chase-thief").style.left = `${chase.thief}%`;
+  $("#chase-pace").textContent = `${translate("chasePace")}: ${ninjaPace(chase.strokes, performance.now()).toFixed(1)}`;
+  $("#chase-correct").textContent = chase.prefix;
+  $("#chase-remaining").textContent = chase.word.slice(chase.prefix.length);
+  $("#chase-input").disabled = !chase.active;
+  $("#chase-start").textContent = translate(chase.active || chase.finished ? "chaseRestart" : "chaseStart");
+  for (const button of $$("#chase-levels button")) {
+    button.classList.toggle("active", button.dataset.level === chase.level);
+    button.setAttribute("aria-pressed", String(button.dataset.level === chase.level));
+    button.disabled = chase.active;
+  }
+  if (!$("#chase-feedback").textContent) $("#chase-feedback").textContent = translate("chaseReady");
+}
+function stopChase(message) {
+  chase.active = false;
+  chase.finished = message !== "chasePaused";
+  chase.outcome = message === "chaseCaught" ? "caught" : message === "chaseEscaped" ? "escaped" : "";
+  cancelAnimationFrame(chase.frame);
+  $("#chase-feedback").textContent = translate(message);
+  renderChase();
+}
+function tickChase(now) {
+  if (!chase.active) return;
+  const seconds = chase.lastTime ? Math.min(0.1, Math.max(0, (now - chase.lastTime) / 1000)) : 0;
+  chase.lastTime = now;
+  chase.strokes = chase.strokes.filter((time) => time >= now - 4000);
+  const pace = ninjaPace(chase.strokes, now);
+  const next = advanceChase(chase, seconds, pace, chase.level);
+  chase.ninja = next.ninja;
+  chase.thief = next.thief;
+  $("#chase-ninja").style.left = `${chase.ninja}%`;
+  $("#chase-thief").style.left = `${chase.thief}%`;
+  $("#chase-pace").textContent = `${translate("chasePace")}: ${pace.toFixed(1)}`;
+  if (next.outcome) stopChase(next.outcome === "caught" ? "chaseCaught" : "chaseEscaped");
+  else chase.frame = requestAnimationFrame(tickChase);
+}
+function startChase() {
+  cancelAnimationFrame(chase.frame);
+  chase.active = true;
+  chase.finished = false;
+  chase.ninja = initialChase.ninja;
+  chase.thief = initialChase.thief;
+  chase.word = chaseWords[Math.floor(Math.random() * chaseWords.length)];
+  chase.prefix = "";
+  chase.furthest = 0;
+  chase.strokes = [];
+  chase.lastTime = 0;
+  chase.outcome = "";
+  $("#chase-input").value = "";
+  $("#chase-input").classList.remove("invalid");
+  $("#chase-feedback").textContent = translate("chaseRunning");
+  renderChase();
+  $("#chase-input").focus();
+  chase.frame = requestAnimationFrame(tickChase);
+}
+function handleChaseInput(event) {
+  if (!chase.active || event?.isComposing) return;
+  const input = $("#chase-input");
+  const value = input.value.normalize("NFC");
+  if (!/^[\u3040-\u309f]*$/u.test(value) || !chase.word.startsWith(value)) {
+    input.classList.add("invalid");
+    $("#chase-feedback").textContent = translate("chaseMistake");
+    return;
+  }
+  input.classList.remove("invalid");
+  $("#chase-feedback").textContent = translate("chaseRunning");
+  if (value.length > chase.furthest) {
+    const now = performance.now();
+    for (let index = chase.furthest; index < value.length; index++) chase.strokes.push(now);
+    chase.furthest = value.length;
+  }
+  chase.prefix = value;
+  if (value === chase.word) {
+    const choices = chaseWords.filter((word) => word !== chase.word);
+    chase.word = choices[Math.floor(Math.random() * choices.length)];
+    chase.prefix = "";
+    chase.furthest = 0;
+    input.value = "";
+  }
+  renderChase();
+}
+
 function renderUploadTracks() {
   const lesson = Number($("#upload-lesson").value);
   const select = $("#upload-track");
@@ -353,11 +444,27 @@ async function loadSharedMaterials() {
     const response = await fetch("/api/materials");
     if (!response.ok) throw new Error("materials");
     const data = await response.json();
-    state.sharedMaterials = Array.isArray(data.items) ? data.items : [];
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    const newest = new Map();
+    for (const item of rawItems) {
+      const key = (item.type === "txt" || item.type === "md") && item.trackId ? `${item.type}:${item.trackId}:${item.name}` : item.id;
+      if (!newest.has(key) || item.uploaded > newest.get(key).uploaded) newest.set(key, item);
+    }
+    state.sharedMaterials = [...newest.values()];
     state.libraryError = false;
+    let vocabularyChanged = false;
     for (const item of [...state.sharedMaterials].sort((a, b) => a.uploaded.localeCompare(b.uploaded))) {
-      if (!knownTracks.has(item.trackId)) continue;
       const url = `/api/materials/file?id=${encodeURIComponent(item.id)}`;
+      if (item.type === "txt" && !item.trackId && item.name === "tofu-vocabulary-lessons-0-4.txt") {
+        try {
+          const packResponse = await fetch(url);
+          if (packResponse.ok) {
+            const parsed = JSON.parse((await packResponse.text()).slice(0, 500000));
+            vocabularyChanged = mergeContent({ vocabulary: parsed.vocabulary }) > 0 || vocabularyChanged;
+          }
+        } catch { /* Keep the library usable if a private vocabulary pack is malformed. */ }
+      }
+      if (!knownTracks.has(item.trackId)) continue;
       if (item.type === "mp3") state.publicAudio[item.trackId] = url;
       if (item.type === "txt" || item.type === "md") {
         try {
@@ -367,6 +474,7 @@ async function loadSharedMaterials() {
       }
     }
     selectTrack(state.track); renderLibrary();
+    if (vocabularyChanged) { renderVocab(); newQuestion(false); newMatchBoard(); }
   } catch { state.libraryError = true; renderLibrary(); }
 }
 async function loadSession() {
@@ -464,6 +572,13 @@ function bindEvents(){
   $$("#prompt-modes button").forEach((button)=>button.addEventListener("click",()=>{state.promptMode=button.dataset.mode;$$("#prompt-modes button").forEach((b)=>b.classList.toggle("active",b===button));newQuestion();}));
   $$("#answer-scripts button").forEach((button)=>button.addEventListener("click",()=>{state.answerScript=button.dataset.answer;$$("#answer-scripts button").forEach((b)=>b.classList.toggle("active",b===button));renderQuestion(false);}));
   $("#dict-replay").addEventListener("click",playPrompt);$("#dict-next").addEventListener("click",newQuestion);$("#new-match").addEventListener("click",newMatchBoard);
+  $$("#chase-levels button").forEach((button) => button.addEventListener("click", () => { if (chase.active) return; chase.level = button.dataset.level; renderChase(); }));
+  $("#chase-start").addEventListener("click", startChase);
+  $("#chase-input").addEventListener("input", handleChaseInput);
+  $("#chase-input").addEventListener("compositionend", handleChaseInput);
+  $("#chase-input").addEventListener("paste", (event) => event.preventDefault());
+  $("#chase-input").addEventListener("drop", (event) => event.preventDefault());
+  document.addEventListener("visibilitychange", () => { if (document.hidden && chase.active) stopChase("chasePaused"); });
   $("#library-lesson").addEventListener("change", renderLibrary);
   $("#library-refresh").addEventListener("click", loadSharedMaterials);
   $("#upload-lesson").addEventListener("change", renderUploadTracks);

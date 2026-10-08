@@ -1,8 +1,8 @@
 # Tofu Japanese Study Studio
 
-An independent Japanese study companion for lessons 0–4, built for Cloudflare Pages. It has listening and reading, kana and kanji writing, lesson vocabulary, dictation, matching, and a private library for shared files. The interface supports English, Japanese, Chinese, Spanish, French, and German. It has day/night themes, full screen, a 0–100 volume slider, and no saved scores or learner accounts.
+An independent Japanese study companion for lessons 0–4, built for Cloudflare Pages. It has listening and reading, kana and kanji writing, lesson vocabulary, dictation, matching, a hiragana typing chase, and a private library for shared files. The interface supports English, Japanese, Chinese, Spanish, French, and German. It has day/night themes, full screen, a 0–100 volume slider, and no saved scores or learner accounts.
 
-This project is unaffiliated with the Tobira publisher. The repository and ZIP do **not** contain the textbook PDF, publisher audio, textbook passages, a password, or anyone's personal notes. The included original readings and starter vocabulary are not a complete transcription of the book.
+This project is unaffiliated with the Tobira publisher. The repository and ZIP do **not** contain the textbook PDF, publisher audio, textbook passages, a password, or anyone's personal notes. The included original readings and fallback starter vocabulary are not a complete transcription of the book. Private lesson content belongs in Cloudflare KV, uploaded through the owner interface.
 
 ## The simple publishing path
 
@@ -74,6 +74,8 @@ If you set up the older `MATERIALS` R2 binding, remove that binding after KV wor
 
 For many numbered recordings, use **Library → Upload numbered audio together**. Select all matching MP3 files (or one lesson at a time). The site checks names such as `L04-01.mp3`, derives the lesson and exact track, uploads one file at a time, and skips tracks already in the library. Keep the page open until the progress message says it is done. If it stops, select the same files again; completed tracks will be skipped. Text and PDF files still use **Add a shared file**, where you must review any track match yourself.
 
+To use a complete private vocabulary list, upload a UTF-8 text file named exactly `tofu-vocabulary-lessons-0-4.txt` with **No track** selected. Its contents must be JSON with a `vocabulary` object whose keys are lesson numbers `0` through `4`. Each key contains an array of `{ "written": "...", "reading": "...", "meaning": "..." }` entries. Set `"practice": false` on counters, templates, or ambiguous alternatives that should remain visible in Vocabulary but should not appear in Dictation or Matching. Sign in as a reader and confirm the five lesson counts. This file stays in KV and is fetched only after password sign-in; do not add it to `public` or GitHub if it contains textbook material. If you upload a corrected pack later, use the same filename; the newest file takes precedence.
+
 The owner controls are enforced by the Cloudflare Function, not just hidden in the browser. Uploaded files are available to anyone who has the reader password, so only upload material you are allowed to share. Changing the reader password stops future sign-ins with the old password; to end existing 8-hour sessions immediately, also change `SESSION_SECRET` and redeploy.
 
 ### 6. Publish later changes
@@ -84,10 +86,11 @@ Edit the site files at the same paths in GitHub and commit them. Cloudflare auto
 
 - **Listen & read:** Five original Japanese readings use your device's Japanese voice. The site catalogs 96 lesson 0–4 textbook track IDs. A shared MP3 is connected to a track only through the exact ID selected by the owner. The player supports seeking and a start/end loop. Visitors can also select personal MP3s for their own browser session without sharing them.
 - **Writing:** 46 basic hiragana, 46 basic katakana, and 31 lesson 3–4 kanji with dotted four-part practice squares. The animated guides load from the credited open projects below. Drawing still works if a guide cannot load.
-- **Vocabulary:** A reviewed starter selection for each lesson. English meanings stay in English in every interface language. It is not the complete textbook vocabulary.
+- **Vocabulary:** A small original starter selection is the fallback. When the owner uploads the private vocabulary file described above, its full lesson lists replace the fallback. English meanings stay in English in every interface language. Dictation and Matching skip items marked `practice: false`.
 - **Dictation and matching:** Lesson selection, Japanese or English device speech, written/kana answer choices, and immediate feedback. No answers or scores are saved.
+- **Typing chase:** A separate hiragana game with a ninja pursuing a thief. Correctly typed characters raise the ninja's speed; three thief speeds change the difficulty. It accepts Japanese keyboard or IME input, and saves no typing data or result.
 
-The textbook PDF previously available during development consisted of scanned pages, so full text extraction and exact audio-to-text matching could not be verified. The project deliberately leaves unknown transcripts blank. Do not infer a transcript from a filename or nearby textbook page. The optional `public/content.json` supports *original or distributable reviewed material* but is empty by default; putting protected textbook text or paths to media in that public file would publish them on GitHub. For private shared texts, use the owner upload form instead.
+The textbook PDF is scanned, so text extraction and audio matching require review. Upload a transcript only after checking its printed track label and its audio; other tracks deliberately show no transcript. The optional `public/content.json` supports *original or distributable reviewed material* but is empty by default; putting protected textbook text or paths to media in that public file would publish them on GitHub. For private shared texts, use the owner upload form instead. The [publisher's Japanese–English vocabulary index](https://tobirabeginning.9640.jp/contents1/index/) can help check lesson assignments and kana spellings.
 
 The official [Tobira audio page](https://tobirabeginning.9640.jp/contents1/audio/) describes access for purchasers. Access does not itself establish permission to redistribute recordings, PDFs, or passages to every holder of a shared password. Review your license or ask the publisher before uploading those files to KV. The software's MIT license covers this site's original code; it does not relicense third-party textbook content.
 
