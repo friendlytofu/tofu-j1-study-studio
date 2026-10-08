@@ -62,4 +62,20 @@ de:{sound:"Ton",soundMute:"Stumm",soundLow:"Leise",soundMedium:"Mittel",soundHig
 };
 for (const [language, labels] of Object.entries(newLabels)) Object.assign(messages[language], labels);
 
+const chaseExtras = {
+  en:{chaseHintShow:"Show spelling",chaseHintHide:"Hide spelling",chaseMusicOn:"Music on",chaseMusicOff:"Music off",chaseWinNote:"The ninja caught the thief!",chaseLoseNote:"The thief got away. Try again!",tourChase:"Type lesson words in romaji to help the ninja. Hide the spelling for a challenge, toggle the chase music, and choose the thief’s speed. A large message marks the result."},
+  ja:{chaseHintShow:"つづりを表示",chaseHintHide:"つづりを隠す",chaseMusicOn:"音楽オン",chaseMusicOff:"音楽オフ",chaseWinNote:"忍者が泥棒を捕まえました！",chaseLoseNote:"泥棒が逃げました。もう一度！",tourChase:"単語をローマ字で入力して忍者を助けます。つづりの表示や音楽を切り替え、泥棒の速さを選べます。結果は大きく表示されます。"},
+  zh:{chaseHintShow:"显示拼写",chaseHintHide:"隐藏拼写",chaseMusicOn:"音乐开",chaseMusicOff:"音乐关",chaseWinNote:"忍者抓住了小偷！",chaseLoseNote:"小偷逃走了，再试一次！",tourChase:"用罗马字输入单词帮助忍者。可隐藏拼写、开关背景音乐并选择小偷速度。结束时会显示醒目的结果。"},
+  es:{chaseHintShow:"Mostrar escritura",chaseHintHide:"Ocultar escritura",chaseMusicOn:"Música sí",chaseMusicOff:"Música no",chaseWinNote:"¡El ninja atrapó al ladrón!",chaseLoseNote:"El ladrón escapó. ¡Inténtalo otra vez!",tourChase:"Escribe palabras en romaji para ayudar al ninja. Puedes ocultar la escritura, cambiar la música y elegir la velocidad. El resultado aparece en grande."},
+  fr:{chaseHintShow:"Afficher l’écriture",chaseHintHide:"Masquer l’écriture",chaseMusicOn:"Musique oui",chaseMusicOff:"Musique non",chaseWinNote:"Le ninja a attrapé le voleur !",chaseLoseNote:"Le voleur s’est échappé. Réessayez !",tourChase:"Tapez les mots en romaji pour aider le ninja. Masquez l’écriture, activez la musique et choisissez la vitesse. Le résultat s’affiche en grand."},
+  de:{chaseHintShow:"Schreibweise zeigen",chaseHintHide:"Schreibweise verbergen",chaseMusicOn:"Musik an",chaseMusicOff:"Musik aus",chaseWinNote:"Der Ninja hat den Dieb gefasst!",chaseLoseNote:"Der Dieb ist entkommen. Versuch es erneut!",tourChase:"Tippe Wörter in Romaji, um dem Ninja zu helfen. Verberge die Schreibweise, schalte die Musik um und wähle das Tempo. Das Ergebnis erscheint groß."}
+};
+for (const [language, labels] of Object.entries(chaseExtras)) Object.assign(messages[language], labels);
+Object.assign(messages.en, {tourChaseHint:"Use Hide spelling to recall the romaji yourself. Show it again whenever you need a hint.",tourChaseMusic:"Switch the original chase music on or off here. The header sound control sets its loudness; mute silences it and the result chime."});
+Object.assign(messages.ja, {tourChaseHint:"つづりを隠すと、ローマ字を自分で思い出す練習ができます。必要なら再表示できます。",tourChaseMusic:"ここで追跡用のオリジナル音楽を切り替えます。上の音量設定で大きさを選び、消音もできます。"});
+Object.assign(messages.zh, {tourChaseHint:"隐藏拼写后，可以自己回忆罗马字。需要提示时再显示即可。",tourChaseMusic:"在这里开关原创追逐音乐。顶部音量控制也会调整音乐和结果提示音。"});
+Object.assign(messages.es, {tourChaseHint:"Oculta la escritura para recordar el romaji por tu cuenta. Puedes volver a mostrarla.",tourChaseMusic:"Activa o desactiva la música original. El control superior ajusta su volumen y el sonido final."});
+Object.assign(messages.fr, {tourChaseHint:"Masquez l’écriture pour retrouver le romaji vous-même. Vous pouvez la réafficher.",tourChaseMusic:"Activez ou désactivez la musique originale. Le contrôle supérieur règle son volume et le son final."});
+Object.assign(messages.de, {tourChaseHint:"Verbirg die Schreibweise, um Romaji selbst zu erinnern. Du kannst sie wieder anzeigen.",tourChaseMusic:"Schalte hier die originale Musik um. Oben regelst du Musik und Ergebniston."});
+
 export const t = (language, key) => messages[language]?.[key] ?? messages.en[key] ?? key;

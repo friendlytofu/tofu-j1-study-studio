@@ -1,6 +1,7 @@
 import { trackCounts, tracks, readings, vocab, hiragana, katakana, kanji, kanjiLessons } from "./data.js";
 import { t } from "./i18n.js";
 import { buildChasePool, initialChase, ninjaPace, advanceChase } from "./chase.js";
+import { ChaseAudio } from "./chase-audio.js";
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -16,7 +17,8 @@ const state = {
 const audio = $("#track-audio");
 let toastTimer;
 let strokeRequest = 0;
-const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, pool: [], word: null, prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "" };
+const chase = { active: false, finished: false, level: "normal", ninja: initialChase.ninja, thief: initialChase.thief, pool: [], word: null, prefix: "", furthest: 0, strokes: [], frame: 0, lastTime: 0, outcome: "", showHint: true, musicEnabled: true };
+const chaseAudio = new ChaseAudio();
 const volumeValues = [0, .2, .5, 1];
 let clickContext;
 const tourSteps = [
@@ -28,6 +30,8 @@ const tourSteps = [
   { target:'.nav-tab[data-view="dictation"]', key:"tourDictation", view:"dictation" },
   { target:'.nav-tab[data-view="match"]', key:"tourMatch", view:"match" },
   { target:'.nav-tab[data-view="chase"]', key:"tourChase", view:"chase" },
+  { target:"#chase-hint-toggle", key:"tourChaseHint", view:"chase" },
+  { target:"#chase-music-toggle", key:"tourChaseMusic", view:"chase" },
   { target:'.nav-tab[data-view="library"]', key:"tourLibrary", view:"library" }
 ];
 let tourIndex = -1;
@@ -39,6 +43,7 @@ function setVolume(level) {
   state.volume = level;
   safeSet("jss-volume-level", String(level));
   audio.volume = volumeValues[level];
+  chaseAudio.setVolume(volumeValues[level]);
   $$("#volume-levels button").forEach((button) => {
     const active = Number(button.dataset.volume) === level;
     button.classList.toggle("active", active);
@@ -88,7 +93,7 @@ function showTourStep(index) {
 function endTour() {
   tourIndex = -1;
   $("#tour-layer").hidden = true;
-  safeSet("jss-tour-seen-v1", "yes");
+  safeSet("jss-tour-seen-v2", "yes");
   $("#tour-open").focus();
 }
 function startTour() {
@@ -409,6 +414,14 @@ function renderChase() {
   $("#chase-reading").textContent = chase.word?.hiragana || "";
   $("#chase-meaning").textContent = chase.word ? `${lessonLabel(chase.word.lesson)} · ${chase.word.meaning}` : "";
   $("#chase-romaji").textContent = chase.word?.romaji[0] || "";
+  $("#chase-hint").hidden = !chase.showHint;
+  $("#chase-hint-toggle").textContent = translate(chase.showHint ? "chaseHintHide" : "chaseHintShow");
+  $("#chase-hint-toggle").setAttribute("aria-expanded", String(chase.showHint));
+  $("#chase-music-toggle").textContent = `♫ ${translate(chase.musicEnabled ? "chaseMusicOn" : "chaseMusicOff")}`;
+  $("#chase-music-toggle").setAttribute("aria-pressed", String(chase.musicEnabled));
+  $("#chase-result").hidden = !chase.outcome;
+  $("#chase-result-title").textContent = chase.outcome === "caught" ? "おめでとう！" : chase.outcome === "escaped" ? "ざんねん！" : "";
+  $("#chase-result-detail").textContent = chase.outcome === "caught" ? translate("chaseWinNote") : chase.outcome === "escaped" ? translate("chaseLoseNote") : "";
   $("#chase-typed").textContent = chase.prefix || "—";
   $("#chase-input").disabled = !chase.active;
   $("#chase-start").textContent = translate(chase.active || chase.finished ? "chaseRestart" : "chaseStart");
@@ -424,6 +437,8 @@ function stopChase(message) {
   chase.finished = message !== "chasePaused";
   chase.outcome = message === "chaseCaught" ? "caught" : message === "chaseEscaped" ? "escaped" : "";
   cancelAnimationFrame(chase.frame);
+  chaseAudio.stop();
+  if (chase.outcome) chaseAudio.outcome(chase.outcome === "caught");
   $("#chase-feedback").textContent = translate(message);
   renderChase();
 }
@@ -444,6 +459,7 @@ function tickChase(now) {
 }
 function startChase() {
   cancelAnimationFrame(chase.frame);
+  chaseAudio.stop();
   chase.pool = buildChasePool(vocab);
   if (!chase.pool.length) { toast(translate("chaseNoWords")); return; }
   chase.active = true;
@@ -461,6 +477,7 @@ function startChase() {
   $("#chase-feedback").textContent = translate("chaseRunning");
   renderChase();
   $("#chase-input").focus();
+  if (chase.musicEnabled) chaseAudio.start();
   chase.frame = requestAnimationFrame(tickChase);
 }
 function handleChaseInput(event) {
@@ -678,6 +695,8 @@ function bindEvents(){
   $$("#answer-scripts button").forEach((button)=>button.addEventListener("click",()=>{state.answerScript=button.dataset.answer;$$("#answer-scripts button").forEach((b)=>b.classList.toggle("active",b===button));renderQuestion(false);}));
   $("#dict-replay").addEventListener("click",playPrompt);$("#dict-next").addEventListener("click",newQuestion);$("#new-match").addEventListener("click",newMatchBoard);
   $$("#chase-levels button").forEach((button) => button.addEventListener("click", () => { if (chase.active) return; chase.level = button.dataset.level; renderChase(); }));
+  $("#chase-hint-toggle").addEventListener("click", () => { chase.showHint = !chase.showHint; renderChase(); });
+  $("#chase-music-toggle").addEventListener("click", () => { chase.musicEnabled = !chase.musicEnabled; if (chase.active && chase.musicEnabled) chaseAudio.start(); else chaseAudio.stop(); renderChase(); });
   $("#chase-start").addEventListener("click", startChase);
   $("#chase-input").addEventListener("input", handleChaseInput);
   $("#chase-input").addEventListener("compositionend", handleChaseInput);
@@ -701,5 +720,5 @@ function bindEvents(){
   window.addEventListener("beforeunload",()=>{for(const url of state.audioFiles.values())URL.revokeObjectURL(url);});
   initDrawing();
 }
-async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v1"))startTour();}
+async function init(){if(!["en","ja","zh","es","fr","de"].includes(state.language))state.language="en";setTheme(state.theme==="night"?"night":"day");$("#language").value=state.language;bindEvents();applyLanguage();selectTrack(state.track);newQuestion(false);newMatchBoard();showView(location.hash.slice(1)||"read");await loadSession();await loadPublicContent();await loadSharedMaterials();if(!safeGet("jss-tour-seen-v2"))startTour();}
 init();
