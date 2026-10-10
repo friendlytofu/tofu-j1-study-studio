@@ -331,12 +331,14 @@ async function loadStrokeArt() {
   const target = $("#stroke-art"); target.textContent = character;
   $("#stroke-status").textContent = translate("strokeLoading");
   try {
-    const url = script === "kanji" ? `https://cdn.jsdelivr.net/gh/KanjiVG/kanjivg@master/kanji/${character.codePointAt(0).toString(16).padStart(5,"0")}.svg` : `https://cdn.jsdelivr.net/gh/zhengkyl/strokesvg@main/dist/${script}/${encodeURIComponent(character)}.svg`;
+    // strokesvg has the voiced kana except ゔ; use the credited KanjiVG guide for it.
+    const useKanjiVG = script === "kanji" || character === "ゔ";
+    const url = useKanjiVG ? `https://cdn.jsdelivr.net/gh/KanjiVG/kanjivg@master/kanji/${character.codePointAt(0).toString(16).padStart(5,"0")}.svg` : `https://cdn.jsdelivr.net/gh/zhengkyl/strokesvg@main/dist/${script}/${encodeURIComponent(character)}.svg`;
     const response = await fetch(url); if (!response.ok) throw new Error("fetch");
     const doc = new DOMParser().parseFromString(await response.text(), "image/svg+xml");
     if (doc.querySelector("parsererror")) throw new Error("svg");
     if (requestNumber !== strokeRequest) return;
-    if (script === "kanji") {
+    if (useKanjiVG) {
       const paths = [...doc.querySelectorAll('g[id^="kvg:StrokePaths_"] path')].map((element) => element.getAttribute("d")).filter(Boolean);
       if (!paths.length) throw new Error("paths");
       const svg = document.createElementNS("http://www.w3.org/2000/svg","svg"); svg.setAttribute("viewBox","0 0 109 109"); svg.setAttribute("aria-hidden","true");
@@ -355,7 +357,7 @@ async function loadStrokeArt() {
 }
 function animateStrokes() {
   if (!state.strokeSvg) { loadStrokeArt(); return; }
-  const paths = state.script === "kanji" ? [...state.strokeSvg.querySelectorAll(".animated-stroke")] : [...state.strokeSvg.querySelectorAll('g[data-strokesvg="strokes"] path')];
+  const paths = state.strokeSvg.querySelector(".animated-stroke") ? [...state.strokeSvg.querySelectorAll(".animated-stroke")] : [...state.strokeSvg.querySelectorAll('g[data-strokesvg="strokes"] path')];
   paths.forEach((path, index) => {
     try {
       const length = path.getTotalLength() + 2;

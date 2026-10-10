@@ -21,8 +21,10 @@ const raw = [
 
 export const vocab = raw.map((lesson, index) => lesson.map(([written, reading, meaning], item) => ({ id: `${index}-${item}`, lesson: index, written, reading, meaning })));
 
-export const hiragana = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん".split("");
-export const katakana = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン".split("");
+// Basic kana followed by voiced (dakuten) and semi-voiced (handakuten) forms.
+// Each character uses its own complete diagram, including its marks (KanjiVG for ゔ).
+export const hiragana = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽゔ".split("");
+export const katakana = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポヴ".split("");
 // Cross-checked against the supplied lesson 3 and lesson 4 kanji slides.
 export const kanji = ["一","二","三","四","五","六","七","八","九","十","月","私","子","人","百","千","万","円","曜","日","火","水","木","金","土","学","生","先","年","大","小"];
 export const kanjiLessons = Object.fromEntries(kanji.map((character, index) => [character, index < 14 ? 3 : 4]));

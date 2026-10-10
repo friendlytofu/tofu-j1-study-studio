@@ -86,7 +86,7 @@ Edit the site files at the same paths in GitHub and commit them. Cloudflare auto
 
 - **Listen & read:** The site catalogs 96 lesson 0–4 textbook track IDs. A shared MP3 and transcript are connected to a track only through the exact ID selected by the owner. The player supports seeking and a start/end loop. Visitors can also select personal MP3s for their own browser session without sharing them. Some recordings have a noticeable English accent; use your sensei's pronunciation in class as your main model.
 - **Study map:** All nine sections appear together in a three-column card grid, with no sideways scrolling. Choose a card to open a section. When the map is off screen, a small floating button returns to it. Arrow keys move focus between cards.
-- **Writing:** 46 basic hiragana, 46 basic katakana, and 31 lesson 3–4 kanji with dotted four-part practice squares. The animated guides load from the credited open projects below. Drawing still works if a guide cannot load.
+- **Writing:** 72 hiragana and 72 katakana (46 basic characters plus voiced and semi-voiced forms, including ゔ/ヴ), and 31 lesson 3–4 kanji with dotted four-part practice squares. The added kana use complete stroke guides that include dakuten and handakuten. The animated guides load from the credited open projects below. Drawing still works if a guide cannot load.
 - **Vocabulary:** A small original starter selection is the fallback. When the owner uploads the private vocabulary file described above, its full lesson lists replace the fallback. English meanings stay in English in every interface language. Dictation and Matching skip items marked `practice: false`.
 - **Dictation and matching:** Lesson selection, Japanese or English device speech, written/kana answer choices, and immediate feedback. No answers or scores are saved.
 - **Sentence builder:** 90 original practice prompts, 18 per lesson across lessons 0–4. Tap Japanese word tiles, compare with one model sentence, reveal it, and hear it with your device's Japanese voice. A different order may still be valid Japanese; the comparison is a guide, not a grammar judgment.
@@ -99,7 +99,7 @@ The textbook PDF is scanned, so text extraction and audio matching require revie
 
 The official [Tobira audio page](https://tobirabeginning.9640.jp/contents1/audio/) describes access for purchasers. Access does not itself establish permission to redistribute recordings, PDFs, or passages to every holder of a shared password. Review your license or ask the publisher before uploading those files to KV. The software's MIT license covers this site's original code; it does not relicense third-party textbook content.
 
-Stroke guides are fetched when used from [KanjiVG](https://github.com/KanjiVG/kanjivg) for kanji and [strokesvg](https://github.com/zhengkyl/strokesvg) for kana. Those projects have their own licenses. Their SVG files are not included here.
+Stroke guides are fetched when used from [KanjiVG](https://github.com/KanjiVG/kanjivg) for kanji and the hiragana ゔ, and [strokesvg](https://github.com/zhengkyl/strokesvg) for the other kana. Those projects have their own licenses. Their SVG files are not included here.
 
 ## Local testing (optional)
 
